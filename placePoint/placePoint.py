@@ -3,6 +3,7 @@ import os
 
 import vtk
 
+import ctk
 import slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
@@ -24,7 +25,9 @@ class placePoint(ScriptedLoadableModule):
         self.parent.categories = [
             "Examples"
         ]  # TODO: set categories (folders where the module shows up in the module selector)
-        self.parent.dependencies = []  # TODO: add here list of module names that this module requires
+        self.parent.dependencies = (
+            []
+        )  # TODO: add here list of module names that this module requires
         self.parent.contributors = [
             "John Doe (AnyWare Corp.)"
         ]  # TODO: replace with "Firstname Lastname (Organization)"
@@ -40,59 +43,72 @@ and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR0132
 """
 
         # Additional initialization step after application startup is complete
-        slicer.app.connect("startupCompleted()", registerSampleData)
+        slicer.app.connect("startupCompleted()", self.initializeAfterStartup)
 
+    def initializeAfterStartup(self):
+        print("initializeAfterStartup", slicer.app.commandOptions().noMainWindow)
+        if not slicer.app.commandOptions().noMainWindow:
+            print("in")
+            # print("here")
+            # self.settingsPanel = MONAILabelSettingsPanel()
+            # slicer.app.settingsDialog().addPanel("MONAI Label", self.settingsPanel)
+
+
+# class MONAILabelSettingsPanel(ctk.ctkSettingsPanel):
+#     def __init__(self, *args, **kwargs):
+#         ctk.ctkSettingsPanel.__init__(self, *args, **kwargs)
+#         self.ui = _ui_MONAILabelSettingsPanel(self)
 
 #
 # Register sample data sets in Sample Data module
 #
 
 
-def registerSampleData():
-    """
-    Add data sets to Sample Data module.
-    """
-    # It is always recommended to provide sample data for users to make it easy to try the module,
-    # but if no sample data is available then this method (and associated startupCompeted signal connection) can be removed.
+# def registerSampleData():
+#     """
+#     Add data sets to Sample Data module.
+#     """
+#     # It is always recommended to provide sample data for users to make it easy to try the module,
+#     # but if no sample data is available then this method (and associated startupCompeted signal connection) can be removed.
 
-    import SampleData
+#     import SampleData
 
-    iconsPath = os.path.join(os.path.dirname(__file__), "Resources/Icons")
+#     iconsPath = os.path.join(os.path.dirname(__file__), "Resources/Icons")
 
-    # To ensure that the source code repository remains small (can be downloaded and installed quickly)
-    # it is recommended to store data sets that are larger than a few MB in a Github release.
+#     # To ensure that the source code repository remains small (can be downloaded and installed quickly)
+#     # it is recommended to store data sets that are larger than a few MB in a Github release.
 
-    # placePoint1
-    SampleData.SampleDataLogic.registerCustomSampleDataSource(
-        # Category and sample name displayed in Sample Data module
-        category="placePoint",
-        sampleName="placePoint1",
-        # Thumbnail should have size of approximately 260x280 pixels and stored in Resources/Icons folder.
-        # It can be created by Screen Capture module, "Capture all views" option enabled, "Number of images" set to "Single".
-        thumbnailFileName=os.path.join(iconsPath, "placePoint1.png"),
-        # Download URL and target file name
-        uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
-        fileNames="placePoint1.nrrd",
-        # Checksum to ensure file integrity. Can be computed by this command:
-        #  import hashlib; print(hashlib.sha256(open(filename, "rb").read()).hexdigest())
-        checksums="SHA256:998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
-        # This node name will be used when the data set is loaded
-        nodeNames="placePoint1",
-    )
+#     # placePoint1
+#     SampleData.SampleDataLogic.registerCustomSampleDataSource(
+#         # Category and sample name displayed in Sample Data module
+#         category="placePoint",
+#         sampleName="placePoint1",
+#         # Thumbnail should have size of approximately 260x280 pixels and stored in Resources/Icons folder.
+#         # It can be created by Screen Capture module, "Capture all views" option enabled, "Number of images" set to "Single".
+#         thumbnailFileName=os.path.join(iconsPath, "placePoint1.png"),
+#         # Download URL and target file name
+#         uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
+#         fileNames="placePoint1.nrrd",
+#         # Checksum to ensure file integrity. Can be computed by this command:
+#         #  import hashlib; print(hashlib.sha256(open(filename, "rb").read()).hexdigest())
+#         checksums="SHA256:998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
+#         # This node name will be used when the data set is loaded
+#         nodeNames="placePoint1",
+#     )
 
-    # placePoint2
-    SampleData.SampleDataLogic.registerCustomSampleDataSource(
-        # Category and sample name displayed in Sample Data module
-        category="placePoint",
-        sampleName="placePoint2",
-        thumbnailFileName=os.path.join(iconsPath, "placePoint2.png"),
-        # Download URL and target file name
-        uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
-        fileNames="placePoint2.nrrd",
-        checksums="SHA256:1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
-        # This node name will be used when the data set is loaded
-        nodeNames="placePoint2",
-    )
+#     # placePoint2
+#     SampleData.SampleDataLogic.registerCustomSampleDataSource(
+#         # Category and sample name displayed in Sample Data module
+#         category="placePoint",
+#         sampleName="placePoint2",
+#         thumbnailFileName=os.path.join(iconsPath, "placePoint2.png"),
+#         # Download URL and target file name
+#         uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
+#         fileNames="placePoint2.nrrd",
+#         checksums="SHA256:1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
+#         # This node name will be used when the data set is loaded
+#         nodeNames="placePoint2",
+#     )
 
 
 #
@@ -111,8 +127,12 @@ class placePointWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         ScriptedLoadableModuleWidget.__init__(self, parent)
         VTKObservationMixin.__init__(self)  # needed for parameter node observation
+
         self.logic = None
         self._parameterNode = None
+        self._volumeNode = None
+        self._segmentNode = None
+
         self._updatingGUIFromParameterNode = False
 
         self.dgPositivePointListNode = None
@@ -120,9 +140,6 @@ class placePointWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.dgNegativePointListNode = None
         self.dgNegativePointListNodeObservers = []
         self.ignorePointListNodeAddEvent = False
-
-        # debug
-        self.updateGUIFromParameterNode()
 
     def setup(self):
         """
@@ -150,6 +167,7 @@ class placePointWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # These connections ensure that we update parameter node when scene is closed
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.StartCloseEvent, self.onSceneStartClose)
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.EndCloseEvent, self.onSceneEndClose)
+        self.addObserver(slicer.mrmlScene, slicer.mrmlScene.NodeAddedEvent, self.onSceneEndImport)
 
         # These connections ensure that whenever user changes some settings on the GUI, that is saved in the MRML scene
         # (in the selected parameter node).
@@ -161,6 +179,7 @@ class placePointWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Buttons
         # self.ui.applyButton.connect("clicked(bool)", self.onApplyButton)
+        self.ui.loadModelButton.connect("clicked(bool)", self.loadModelClicked)
 
         # Points
         self.ui.dgPositiveControlPointPlacementWidget.setMRMLScene(slicer.mrmlScene)
@@ -169,19 +188,35 @@ class placePointWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.dgPositiveControlPointPlacementWidget.placeButton().show()
         self.ui.dgPositiveControlPointPlacementWidget.deleteButton().show()
 
-        self.dgPositivePointListNode = None
-        self.dgPositivePointListNodeObservers = []
+        # self.dgPositivePointListNode = None
+        # self.dgPositivePointListNodeObservers = []
+        self.initializeParameterNode()
+
+    def loadModelClicked(self):
+        volumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
+        # print(volumeNode)
+        print("=====================================", self.getControlPointsXYZ(self.dgPositivePointListNode, "foreground"))
+
+        # print(volumeNode.data)
+        # image_id = volumeNode.GetName()
+        self.ui.dgPositiveControlPointPlacementWidget.setPlaceModeEnabled(True)
+
+    def onSceneEndImport(self, caller, event):
+        if not self._volumeNode:
+            self.updateGUIFromParameterNode()
 
     def cleanup(self):
         """
         Called when the application closes and the module widget is destroyed.
         """
+        print("cleanup")
         self.removeObservers()
 
     def enter(self):
         """
         Called each time the user opens this module.
         """
+        print("enter")
         # Make sure parameter node exists and observed
         self.initializeParameterNode()
 
@@ -200,9 +235,9 @@ class placePointWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         Called just before the scene is closed.
         """
+        print("onSceneStartClose")
         # Parameter node will be reset, do not use it anymore
         self.setParameterNode(None)
-
         self.resetPointList(
             self.ui.dgPositiveControlPointPlacementWidget,
             self.dgPositivePointListNode,
@@ -237,8 +272,12 @@ class placePointWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         # Parameter node stores all user choices in parameter values, node selections, etc.
         # so that when the scene is saved and reloaded, these settings are restored.
-
+        print("initializeParameterNode")
         self.setParameterNode(self.logic.getParameterNode())
+        if not self._parameterNode.GetNodeReference("InputVolume"):
+            firstVolumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
+            if firstVolumeNode:
+                self._parameterNode.SetNodeReferenceID("InputVolume", firstVolumeNode.GetID())
 
         # Select default input nodes if nothing is selected yet to save a few clicks for the user
         # if not self._parameterNode.GetNodeReference("InputVolume"):
@@ -289,12 +328,15 @@ class placePointWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._updatingGUIFromParameterNode = True
         print("_+_+", self.dgPositivePointListNode)
         if not self.dgPositivePointListNode:
-            self.dgPositivePointListNode, self.dgPositivePointListNodeObservers = self.createPointListNode(
-                "P", self.onDeepGrowPointListNodeModified, [0.5, 1, 0.5]
-            )
+            (
+                self.dgPositivePointListNode,
+                self.dgPositivePointListNodeObservers,
+            ) = self.createPointListNode("P", self.onDeepGrowPointListNodeModified, [0.5, 1, 0.5])
             print("----", type(self.dgPositivePointListNode), self.dgPositivePointListNode)
 
-            self.ui.dgPositiveControlPointPlacementWidget.setCurrentNode(self.dgPositivePointListNode)
+            self.ui.dgPositiveControlPointPlacementWidget.setCurrentNode(
+                self.dgPositivePointListNode
+            )
             self.ui.dgPositiveControlPointPlacementWidget.setPlaceModeEnabled(False)
 
         # self.ui.dgPositiveControlPointPlacementWidget.setEnabled(self.ui.deepgrowModelSelector.currentText)
@@ -326,7 +368,9 @@ class placePointWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if pointListNode:
             eventIds = [slicer.vtkMRMLMarkupsNode.PointPositionDefinedEvent]
             for eventId in eventIds:
-                pointListNodeObservers.append(pointListNode.AddObserver(eventId, onMarkupNodeModified))
+                pointListNodeObservers.append(
+                    pointListNode.AddObserver(eventId, onMarkupNodeModified)
+                )
         return pointListNodeObservers
 
     def updateParameterNodeFromGUI(self, caller=None, event=None):
@@ -377,9 +421,8 @@ class placePointWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def onDeepGrowPointListNodeModified(self, observer, eventid):
         logging.debug("Deepgrow Point Event!!")
         print("onDeepGrowPointListNodeModified")
-        # print(self.getControlPointsXYZ(self.dgPositivePointListNode, "foreground"))
-        # if self.ignorePointListNodeAddEvent:
-        #     return
+        print(self.dgPositivePointListNode)
+        print("================================", self.getControlPointsXYZ(self.dgPositivePointListNode, "foreground"))
 
         # markupsNode = observer
         # movingMarkupIndex = markupsNode.GetDisplayNode().GetActiveControlPoint()
@@ -553,7 +596,8 @@ class placePointWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ignorePointListNodeAddEvent = False
 
     def getControlPointsXYZ(self, pointListNode, name):
-        v = self._volumeNode
+        v = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
+        # v = self._volumeNode
         RasToIjkMatrix = vtk.vtkMatrix4x4()
         v.GetRASToIJKMatrix(RasToIjkMatrix)
 
