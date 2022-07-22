@@ -1,7 +1,9 @@
 import logging
 import os
+import time
 
 import vtk
+import numpy as np
 
 import ctk
 import slicer
@@ -25,9 +27,7 @@ class placePoint(ScriptedLoadableModule):
         self.parent.categories = [
             "Examples"
         ]  # TODO: set categories (folders where the module shows up in the module selector)
-        self.parent.dependencies = (
-            []
-        )  # TODO: add here list of module names that this module requires
+        self.parent.dependencies = []  # TODO: add here list of module names that this module requires
         self.parent.contributors = [
             "John Doe (AnyWare Corp.)"
         ]  # TODO: replace with "Firstname Lastname (Organization)"
@@ -192,14 +192,40 @@ class placePointWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # self.dgPositivePointListNodeObservers = []
         self.initializeParameterNode()
 
+    
+    def getImageData(self):
+        volumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")        
+        s = img_data.GetDimensions()
+        data_np = np.zeros(s)
+        tic = time.time()
+        for x in range(s[0]):
+            for y in range(s[1]):
+                for z in range(s[2]):
+                    data_np[x, y, z] = img_data.GetScalarComponentAsFloat(x, y, z, 0)
+        # np.save("/home/lin/Desktop/data.npy", data_np)
+        return data_np
+
+# CreateAndAddLabelVolume
     def loadModelClicked(self):
-        volumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
-        # print(volumeNode)
-        print("=====================================", self.getControlPointsXYZ(self.dgPositivePointListNode, "foreground"))
+        # volumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
+        
+        # s = img_data.GetDimensions()
+        # data_np = np.zeros(s)
+        # tic = time.time()
+        # for x in range(s[0]):
+        #     for y in range(s[1]):
+        #         for z in range(s[2]):
+        #             data_np[x, y, z] = img_data.GetScalarComponentAsFloat(x, y, z, 0)
+        # np.save("/home/lin/Desktop/data.npy", data_np)
+
+        # print(volumeNode.GetImageData(), type(volumeNode.GetImageData()))
+        # print("=====================================", self.getControlPointsXYZ(self.dgPositivePointListNode, "foreground"))
 
         # print(volumeNode.data)
         # image_id = volumeNode.GetName()
         self.ui.dgPositiveControlPointPlacementWidget.setPlaceModeEnabled(True)
+
+        
 
     def onSceneEndImport(self, caller, event):
         if not self._volumeNode:
@@ -334,9 +360,7 @@ class placePointWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             ) = self.createPointListNode("P", self.onDeepGrowPointListNodeModified, [0.5, 1, 0.5])
             print("----", type(self.dgPositivePointListNode), self.dgPositivePointListNode)
 
-            self.ui.dgPositiveControlPointPlacementWidget.setCurrentNode(
-                self.dgPositivePointListNode
-            )
+            self.ui.dgPositiveControlPointPlacementWidget.setCurrentNode(self.dgPositivePointListNode)
             self.ui.dgPositiveControlPointPlacementWidget.setPlaceModeEnabled(False)
 
         # self.ui.dgPositiveControlPointPlacementWidget.setEnabled(self.ui.deepgrowModelSelector.currentText)
@@ -368,9 +392,7 @@ class placePointWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if pointListNode:
             eventIds = [slicer.vtkMRMLMarkupsNode.PointPositionDefinedEvent]
             for eventId in eventIds:
-                pointListNodeObservers.append(
-                    pointListNode.AddObserver(eventId, onMarkupNodeModified)
-                )
+                pointListNodeObservers.append(pointListNode.AddObserver(eventId, onMarkupNodeModified))
         return pointListNodeObservers
 
     def updateParameterNodeFromGUI(self, caller=None, event=None):
@@ -757,3 +779,6 @@ class placePointTest(ScriptedLoadableModuleTest):
         self.assertEqual(outputScalarRange[1], inputScalarRange[1])
 
         self.delayDisplay("Test passed")
+
+
+
