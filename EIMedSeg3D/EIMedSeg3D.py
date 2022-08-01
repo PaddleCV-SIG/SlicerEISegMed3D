@@ -187,7 +187,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # self.ui.dgPositiveControlPointPlacementWidget.setDefaultNodeColor(qt.QColor(0, 0, 255))
 
         self.ui.dgNegativeControlPointPlacementWidget.setMRMLScene(slicer.mrmlScene)
-        self.ui.dgNegativeControlPointPlacementWidget.placeButton().toolTip = "Select positive points"
+        self.ui.dgNegativeControlPointPlacementWidget.placeButton().toolTip = "Select negative points"
         self.ui.dgNegativeControlPointPlacementWidget.buttonsVisible = False
         self.ui.dgNegativeControlPointPlacementWidget.placeButton().show()
         
@@ -293,8 +293,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.dgPositivePointListNode = None
         self.resetPointList(
             self.ui.dgNegativeControlPointPlacementWidget,
-            self.dgPositivePointListNode,
-            self.dgPositivePointListNodeObservers,
+            self.dgNegativePointListNode,
+            self.dgNegativePointListNodeObservers,
         )
         self.dgNegativePointListNode = None
 
@@ -386,13 +386,18 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.dgPositivePointListNode,
                 self.dgPositivePointListNodeObservers,
             ) = self.createPointListNode("P", self.onDeepGrowPointListNodeModified, [0.5, 1, 0.5])
-            # print("----", type(self.dgPositivePointListNode), self.dgPositivePointListNode)
-
             self.ui.dgPositiveControlPointPlacementWidget.setCurrentNode(self.dgPositivePointListNode)
             self.ui.dgPositiveControlPointPlacementWidget.setPlaceModeEnabled(False)
-            self.ui.dgNegativeControlPointPlacementWidget.setCurrentNode(self.dgPositivePointListNode)
+        
+        if not self.dgNegativePointListNode:
+            (
+                self.dgNegativePointListNode,
+                self.dgNegativePointListNodeObservers,
+            ) = self.createPointListNode("P", self.onDeepGrowPointListNodeModified, [0.5, 1, 0.5])
+            
+            self.ui.dgNegativeControlPointPlacementWidget.setCurrentNode(self.dgNegativePointListNode)
             self.ui.dgNegativeControlPointPlacementWidget.setPlaceModeEnabled(False)
-
+            
 
         # self.ui.dgPositiveControlPointPlacementWidget.setEnabled(self.ui.deepgrowModelSelector.currentText)
         # self.ui.dgPositiveControlPointPlacementWidget.setEnabled("deepedit")
@@ -647,7 +652,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.ignorePointListNodeAddEvent = True
         self.onEditControlPoints(self.dgPositivePointListNode, "MONAILabel.ForegroundPoints")
-        # self.onEditControlPoints(self.dgNegativePointListNode, "MONAILabel.BackgroundPoints")
+        self.onEditControlPoints(self.dgNegativePointListNode, "MONAILabel.BackgroundPoints")
         self.ignorePointListNodeAddEvent = False
 
     def getControlPointsXYZ(self, pointListNode, name):
