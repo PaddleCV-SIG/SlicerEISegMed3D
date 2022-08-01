@@ -180,25 +180,24 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.dgPositiveControlPointPlacementWidget.placeButton().toolTip = "Select positive points"
         self.ui.dgPositiveControlPointPlacementWidget.buttonsVisible = False
         self.ui.dgPositiveControlPointPlacementWidget.placeButton().show()
-        
+
         self.ui.dgNegativeControlPointPlacementWidget.setMRMLScene(slicer.mrmlScene)
         self.ui.dgNegativeControlPointPlacementWidget.placeButton().toolTip = "Select negative points"
         self.ui.dgNegativeControlPointPlacementWidget.buttonsVisible = False
         self.ui.dgNegativeControlPointPlacementWidget.placeButton().show()
 
-
         self.initializeParameterNode()
-        
-        
+
         self.ui.dgPositiveControlPointPlacementWidget.setNodeColor(qt.QColor(0, 255, 0))
         self.ui.dgNegativeControlPointPlacementWidget.setNodeColor(qt.QColor(255, 0, 0))
-
 
     def getImageData(self, save=False):
         volumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
         print(volumeNode)
         if volumeNode is None:
             return None
+        image_id = volumeNode.GetName()
+        print(image_id)
         s = img_data.GetDimensions()
         data_np = np.zeros(s)
         tic = time.time()
@@ -220,30 +219,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     # CreateAndAddLabelVolume
     def loadModelClicked(self):
-        print("default", self.ui.dgPositiveControlPointPlacementWidget.defaultNodeColor)
-        print("curr", self.ui.dgPositiveControlPointPlacementWidget.nodeColor)
-
-
-
-        # data = self.getImageData(save=True)
-
-
-        # volumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
-
-        # s = img_data.GetDimensions()
-        # data_np = np.zeros(s)
-        # tic = time.time()
-        # for x in range(s[0]):
-        #     for y in range(s[1]):
-        #         for z in range(s[2]):
-        #             data_np[x, y, z] = img_data.GetScalarComponentAsFloat(x, y, z, 0)
-        # np.save("/home/lin/Desktop/data.npy", data_np)
-
-        # print(volumeNode.GetImageData(), type(volumeNode.GetImageData()))
-        # print("=====================================", self.getControlPointsXYZ(self.dgPositivePointListNode, "foreground"))
-
-        # print(volumeNode.data)
-        # image_id = volumeNode.GetName()
+        pass
         # self.ui.dgPositiveControlPointPlacementWidget.setPlaceModeEnabled(True)
         # self.ui.dgNegativeControlPointPlacementWidget.setPlaceModeEnabled(True)
 
@@ -383,7 +359,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             (
                 self.dgPositivePointListNode,
                 self.dgPositivePointListNodeObservers,
-            ) = self.createPointListNode("P", self.onDeepGrowPointListNodeModified, [0.5, 1, 0.5])
+            ) = self.createPointListNode("P", self.onControlPointAdded, [0.5, 1, 0.5])
             self.ui.dgPositiveControlPointPlacementWidget.setCurrentNode(self.dgPositivePointListNode)
             self.ui.dgPositiveControlPointPlacementWidget.setPlaceModeEnabled(False)
 
@@ -391,7 +367,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             (
                 self.dgNegativePointListNode,
                 self.dgNegativePointListNodeObservers,
-            ) = self.createPointListNode("P", self.onDeepGrowPointListNodeModified, [0.5, 1, 0.5])
+            ) = self.createPointListNode("P", self.onControlPointAdded, [0.5, 1, 0.5])
 
             self.ui.dgNegativeControlPointPlacementWidget.setCurrentNode(self.dgNegativePointListNode)
             self.ui.dgNegativeControlPointPlacementWidget.setPlaceModeEnabled(False)
@@ -473,36 +449,28 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         #         )
         pass
 
-    def onDeepGrowPointListNodeModified(self, observer, eventid):
-        logging.debug("Deepgrow Point Event!!")
-        print("onDeepGrowPointListNodeModified")
-        print(
-            self.ui.dgPositiveControlPointPlacementWidget.nodeColor,
-            self.ui.dgPositiveControlPointPlacementWidget.defaultNodeColor,
-        )
+    def onControlPointAdded(self, observer, eventid):
+        pos_points = self.getControlPointsXYZ(self.dgPositivePointListNode, "positive")
+        neg_points = self.getControlPointsXYZ(self.dgNegativePointListNode, "negative")
+        
+        newPointIndex = observer.GetDisplayNode().GetActiveControlPoint()
+        new_point_pos = self.getControlPointXYZ(observer, newPointIndex)
+        is_positive_point = new_point_pos == pos_points[-1]
+        logging.info(f"New point: {new_point_pos}, is positive: {is_positive_point}")
+        
 
-        # print(self.dgPositivePointListNode)
-        # print("================================", self.getControlPointsXYZ(self.dgPositivePointListNode, "foreground"))
-
-        # markupsNode = observer
-        # movingMarkupIndex = markupsNode.GetDisplayNode().GetActiveControlPoint()
-        # logging.debug(f"Markup point added; point ID = {movingMarkupIndex}")
-
-        # current_point = self.getControlPointXYZ(markupsNode, movingMarkupIndex)
-
-        # if not self.ui.dgUpdateCheckBox.checked:
-        #     self.onClickDeepgrow(current_point, skip_infer=True)
-        #     return
-
-        # self.onClickDeepgrow(current_point)
-
-        # self.ignorePointListNodeAddEvent = True
-        # self.onEditControlPoints(self.dgPositivePointListNode, "MONAILabel.ForegroundPoints")
+        self.ignorePointListNodeAddEvent = True
+        # maybe run inference here
+        # time.sleep(3)
+        self.ignorePointListNodeAddEvent = False
+        
+        # self.onEditControlPoints(self.dgPositivePointListNode, "positive")
         # self.onEditControlPoints(self.dgNegativePointListNode, "MONAILabel.BackgroundPoints")
         # self.ignorePointListNodeAddEvent = False
 
     def getControlPointXYZ(self, pointListNode, index):
-        v = self._volumeNode
+        v = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
+        # v = self._volumeNode
         RasToIjkMatrix = vtk.vtkMatrix4x4()
         v.GetRASToIJKMatrix(RasToIjkMatrix)
 
@@ -517,6 +485,30 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         logging.debug(f"RAS: {coord}; WORLD: {world}; IJK: {p_Ijk}")
         return p_Ijk[0:3]
+
+    def getControlPointsXYZ(self, pointListNode, name):
+        v = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
+        # v = self._volumeNode
+        RasToIjkMatrix = vtk.vtkMatrix4x4()
+        v.GetRASToIJKMatrix(RasToIjkMatrix)
+
+        point_set = []
+        n = pointListNode.GetNumberOfControlPoints()
+        for i in range(n):
+            coord = pointListNode.GetNthControlPointPosition(i)
+
+            world = [0, 0, 0]
+            pointListNode.GetNthControlPointPositionWorld(i, world)
+
+            p_Ras = [coord[0], coord[1], coord[2], 1.0]
+            p_Ijk = RasToIjkMatrix.MultiplyDoublePoint(p_Ras)
+            p_Ijk = [round(i) for i in p_Ijk]
+
+            logging.debug(f"RAS: {coord}; WORLD: {world}; IJK: {p_Ijk}")
+            point_set.append(p_Ijk[0:3])
+
+        logging.info(f"{name} => Current control points: {point_set}")
+        return point_set
 
     def onClickDeepgrow(self, current_point, skip_infer=False):
         print("onClickDeepgrow")
@@ -630,7 +622,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         pointListNode.RemoveAllControlPoints()
         segmentId, segment = self.currentSegment()
         if segment and segmentId:
-            v = self._volumeNode
+            # v = self._volumeNode
+            v = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
             IjkToRasMatrix = vtk.vtkMatrix4x4()
             v.GetIJKToRASMatrix(IjkToRasMatrix)
 
@@ -654,30 +647,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.onEditControlPoints(self.dgPositivePointListNode, "MONAILabel.ForegroundPoints")
         self.onEditControlPoints(self.dgNegativePointListNode, "MONAILabel.BackgroundPoints")
         self.ignorePointListNodeAddEvent = False
-
-    def getControlPointsXYZ(self, pointListNode, name):
-        v = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
-        # v = self._volumeNode
-        RasToIjkMatrix = vtk.vtkMatrix4x4()
-        v.GetRASToIJKMatrix(RasToIjkMatrix)
-
-        point_set = []
-        n = pointListNode.GetNumberOfControlPoints()
-        for i in range(n):
-            coord = pointListNode.GetNthControlPointPosition(i)
-
-            world = [0, 0, 0]
-            pointListNode.GetNthControlPointPositionWorld(i, world)
-
-            p_Ras = [coord[0], coord[1], coord[2], 1.0]
-            p_Ijk = RasToIjkMatrix.MultiplyDoublePoint(p_Ras)
-            p_Ijk = [round(i) for i in p_Ijk]
-
-            logging.debug(f"RAS: {coord}; WORLD: {world}; IJK: {p_Ijk}")
-            point_set.append(p_Ijk[0:3])
-
-        logging.info(f"{name} => Current control points: {point_set}")
-        return point_set
 
 
 #
