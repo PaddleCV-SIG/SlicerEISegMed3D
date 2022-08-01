@@ -180,22 +180,19 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.dgPositiveControlPointPlacementWidget.placeButton().toolTip = "Select positive points"
         self.ui.dgPositiveControlPointPlacementWidget.buttonsVisible = False
         self.ui.dgPositiveControlPointPlacementWidget.placeButton().show()
-        # self.ui.dgPositiveControlPointPlacementWidget.setNodeColor(qt.QColor(0, 0, 255))
-        # self.ui.dgPositiveControlPointPlacementWidget.setDefaultNodeColor(qt.QColor(0, 0, 255))
-
+        
         self.ui.dgNegativeControlPointPlacementWidget.setMRMLScene(slicer.mrmlScene)
         self.ui.dgNegativeControlPointPlacementWidget.placeButton().toolTip = "Select negative points"
         self.ui.dgNegativeControlPointPlacementWidget.buttonsVisible = False
         self.ui.dgNegativeControlPointPlacementWidget.placeButton().show()
 
-        # print("===", type())
-        # self.ui.dgPositiveControlPointPlacementWidget.deleteButton().hide()
 
-        # print("+_+_+", type(self.ui.dgPositiveControlPointPlacementWidget))
-
-        # self.dgPositivePointListNode = None
-        # self.dgPositivePointListNodeObservers = []
         self.initializeParameterNode()
+        
+        
+        self.ui.dgPositiveControlPointPlacementWidget.setNodeColor(qt.QColor(0, 255, 0))
+        self.ui.dgNegativeControlPointPlacementWidget.setNodeColor(qt.QColor(255, 0, 0))
+
 
     def getImageData(self, save=False):
         volumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
@@ -223,7 +220,13 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     # CreateAndAddLabelVolume
     def loadModelClicked(self):
-        data = self.getImageData(save=True)
+        print("default", self.ui.dgPositiveControlPointPlacementWidget.defaultNodeColor)
+        print("curr", self.ui.dgPositiveControlPointPlacementWidget.nodeColor)
+
+
+
+        # data = self.getImageData(save=True)
+
 
         # volumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
 
@@ -241,8 +244,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # print(volumeNode.data)
         # image_id = volumeNode.GetName()
-        self.ui.dgPositiveControlPointPlacementWidget.setPlaceModeEnabled(True)
-        self.ui.dgNegativeControlPointPlacementWidget.setPlaceModeEnabled(True)
+        # self.ui.dgPositiveControlPointPlacementWidget.setPlaceModeEnabled(True)
+        # self.ui.dgNegativeControlPointPlacementWidget.setPlaceModeEnabled(True)
 
     def onSceneEndImport(self, caller, event):
         if not self._volumeNode:
