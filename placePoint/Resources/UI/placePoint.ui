@@ -59,7 +59,27 @@
       </widget>
      </item>
      <item>
-      <widget class="qSlicerMarkupsPlaceWidget" name="dgPositiveControlPointPlacementWidget"/>
+      <widget class="qSlicerMarkupsPlaceWidget" name="dgPositiveControlPointPlacementWidget">
+       <property name="buttonsVisible">
+        <bool>false</bool>
+       </property>
+       <property name="placeMultipleMarkups">
+        <enum>qSlicerMarkupsPlaceWidget::ForcePlaceMultipleMarkups</enum>
+       </property>
+       <property name="nodeColor">
+        <color>
+         <red>0</red>
+         <green>1</green>
+         <blue>0</blue>
+        </color>
+       </property>
+       <property name="placeModePersistency">
+        <bool>false</bool>
+       </property>
+       <property name="deleteAllMarkupsOptionVisible">
+        <bool>false</bool>
+       </property>
+      </widget>
      </item>
     </layout>
    </item>

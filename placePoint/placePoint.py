@@ -4,12 +4,13 @@ import time
 
 import vtk
 import numpy as np
+import nibabel as nib
+import qt
 
 import ctk
 import slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
-
 
 #
 # placePoint
@@ -183,18 +184,27 @@ class placePointWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Points
         self.ui.dgPositiveControlPointPlacementWidget.setMRMLScene(slicer.mrmlScene)
-        self.ui.dgPositiveControlPointPlacementWidget.placeButton().toolTip = "Select +ve points"
+        self.ui.dgPositiveControlPointPlacementWidget.placeButton().toolTip = "Select positive points"
         self.ui.dgPositiveControlPointPlacementWidget.buttonsVisible = False
         self.ui.dgPositiveControlPointPlacementWidget.placeButton().show()
-        self.ui.dgPositiveControlPointPlacementWidget.deleteButton().show()
+        # self.ui.dgPositiveControlPointPlacementWidget.setNodeColor(qt.QColor(0, 0, 255))
+        # self.ui.dgPositiveControlPointPlacementWidget.setDefaultNodeColor(qt.QColor(0, 0, 255))
+
+        
+        # print("===", type())
+        # self.ui.dgPositiveControlPointPlacementWidget.deleteButton().hide()
+
+        # print("+_+_+", type(self.ui.dgPositiveControlPointPlacementWidget))
 
         # self.dgPositivePointListNode = None
         # self.dgPositivePointListNodeObservers = []
         self.initializeParameterNode()
 
-    
-    def getImageData(self):
-        volumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")        
+    def getImageData(self, save=False):
+        volumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
+        print(volumeNode)
+        if volumeNode is None:
+            return None
         s = img_data.GetDimensions()
         data_np = np.zeros(s)
         tic = time.time()
@@ -202,13 +212,24 @@ class placePointWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             for y in range(s[1]):
                 for z in range(s[2]):
                     data_np[x, y, z] = img_data.GetScalarComponentAsFloat(x, y, z, 0)
-        # np.save("/home/lin/Desktop/data.npy", data_np)
+        if save:
+            np.save("/home/lin/Desktop/data.npy", data_np)
+
+        """
+        import nibabel as nib
+        data = np.load('/home/lin/Desktop/data.npy')
+        nib_img = nib.Nifti1Image(data, np.eye(4))
+        nib.save(nib_img, "/home/lin/Desktop/test.nii.gz")
+        """
+
         return data_np
 
-# CreateAndAddLabelVolume
+    # CreateAndAddLabelVolume
     def loadModelClicked(self):
+        data = self.getImageData(save=True)
+
         # volumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
-        
+
         # s = img_data.GetDimensions()
         # data_np = np.zeros(s)
         # tic = time.time()
@@ -224,8 +245,7 @@ class placePointWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # print(volumeNode.data)
         # image_id = volumeNode.GetName()
         self.ui.dgPositiveControlPointPlacementWidget.setPlaceModeEnabled(True)
-
-        
+        print(type(self.ui.dgPositiveControlPointPlacementWidget))
 
     def onSceneEndImport(self, caller, event):
         if not self._volumeNode:
@@ -352,13 +372,13 @@ class placePointWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Make sure GUI changes do not call updateParameterNodeFromGUI (it could cause infinite loop)
         self._updatingGUIFromParameterNode = True
-        print("_+_+", self.dgPositivePointListNode)
+        # print("_+_+", self.dgPositivePointListNode)
         if not self.dgPositivePointListNode:
             (
                 self.dgPositivePointListNode,
                 self.dgPositivePointListNodeObservers,
             ) = self.createPointListNode("P", self.onDeepGrowPointListNodeModified, [0.5, 1, 0.5])
-            print("----", type(self.dgPositivePointListNode), self.dgPositivePointListNode)
+            # print("----", type(self.dgPositivePointListNode), self.dgPositivePointListNode)
 
             self.ui.dgPositiveControlPointPlacementWidget.setCurrentNode(self.dgPositivePointListNode)
             self.ui.dgPositiveControlPointPlacementWidget.setPlaceModeEnabled(False)
@@ -443,8 +463,10 @@ class placePointWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def onDeepGrowPointListNodeModified(self, observer, eventid):
         logging.debug("Deepgrow Point Event!!")
         print("onDeepGrowPointListNodeModified")
-        print(self.dgPositivePointListNode)
-        print("================================", self.getControlPointsXYZ(self.dgPositivePointListNode, "foreground"))
+        print(self.ui.dgPositiveControlPointPlacementWidget.nodeColor, self.ui.dgPositiveControlPointPlacementWidget.defaultNodeColor)
+
+        # print(self.dgPositivePointListNode)
+        # print("================================", self.getControlPointsXYZ(self.dgPositivePointListNode, "foreground"))
 
         # markupsNode = observer
         # movingMarkupIndex = markupsNode.GetDisplayNode().GetActiveControlPoint()
@@ -779,6 +801,3 @@ class placePointTest(ScriptedLoadableModuleTest):
         self.assertEqual(outputScalarRange[1], inputScalarRange[1])
 
         self.delayDisplay("Test passed")
-
-
-
