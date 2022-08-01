@@ -84,6 +84,37 @@
     </layout>
    </item>
    <item>
+    <layout class="QHBoxLayout" name="negativeLayout">
+     <item>
+      <widget class="QLabel" name="negativeLabel">
+       <property name="text">
+        <string>Negative Point:</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="qSlicerMarkupsPlaceWidget" name="dgNegativeControlPointPlacementWidget">
+       <property name="buttonsVisible">
+        <bool>false</bool>
+       </property>
+       <property name="deleteAllControlPointsOptionVisible">
+        <bool>false</bool>
+       </property>
+       <property name="placeMultipleMarkups">
+        <enum>qSlicerMarkupsPlaceWidget::ForcePlaceMultipleMarkups</enum>
+       </property>
+       <property name="nodeColor">
+        <color>
+         <red>0</red>
+         <green>1</green>
+         <blue>0</blue>
+        </color>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
     <layout class="QHBoxLayout" name="threshLayout">
      <item>
       <widget class="QLabel" name="threshLabel">

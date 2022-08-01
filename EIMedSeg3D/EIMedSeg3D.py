@@ -31,7 +31,7 @@ class EIMedSeg3D(ScriptedLoadableModule):
         self.parent.dependencies = []  # TODO: add here list of module names that this module requires
         self.parent.contributors = [
             "Lin Han, Daisy (Baidu Corp.)"
-        ]  # TODO: replace with "Firstname Lastname (Organization)"
+        ]
         # TODO: update with short description of the module and a link to online module documentation
         self.parent.helpText = """
 This is an example of scripted loadable module bundled in an extension.
@@ -186,6 +186,11 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # self.ui.dgPositiveControlPointPlacementWidget.setNodeColor(qt.QColor(0, 0, 255))
         # self.ui.dgPositiveControlPointPlacementWidget.setDefaultNodeColor(qt.QColor(0, 0, 255))
 
+        self.ui.dgNegativeControlPointPlacementWidget.setMRMLScene(slicer.mrmlScene)
+        self.ui.dgNegativeControlPointPlacementWidget.placeButton().toolTip = "Select positive points"
+        self.ui.dgNegativeControlPointPlacementWidget.buttonsVisible = False
+        self.ui.dgNegativeControlPointPlacementWidget.placeButton().show()
+        
         
         # print("===", type())
         # self.ui.dgPositiveControlPointPlacementWidget.deleteButton().hide()
@@ -241,7 +246,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # print(volumeNode.data)
         # image_id = volumeNode.GetName()
         self.ui.dgPositiveControlPointPlacementWidget.setPlaceModeEnabled(True)
-        print(type(self.ui.dgPositiveControlPointPlacementWidget))
+        self.ui.dgNegativeControlPointPlacementWidget.setPlaceModeEnabled(True)
 
     def onSceneEndImport(self, caller, event):
         if not self._volumeNode:
@@ -286,6 +291,13 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.dgPositivePointListNodeObservers,
         )
         self.dgPositivePointListNode = None
+        self.resetPointList(
+            self.ui.dgNegativeControlPointPlacementWidget,
+            self.dgPositivePointListNode,
+            self.dgPositivePointListNodeObservers,
+        )
+        self.dgNegativePointListNode = None
+
 
     def resetPointList(self, markupsPlaceWidget, pointListNode, pointListNodeObservers):
         if markupsPlaceWidget.placeModeEnabled:
@@ -378,9 +390,12 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
             self.ui.dgPositiveControlPointPlacementWidget.setCurrentNode(self.dgPositivePointListNode)
             self.ui.dgPositiveControlPointPlacementWidget.setPlaceModeEnabled(False)
+            self.ui.dgNegativeControlPointPlacementWidget.setCurrentNode(self.dgPositivePointListNode)
+            self.ui.dgNegativeControlPointPlacementWidget.setPlaceModeEnabled(False)
+
 
         # self.ui.dgPositiveControlPointPlacementWidget.setEnabled(self.ui.deepgrowModelSelector.currentText)
-        self.ui.dgPositiveControlPointPlacementWidget.setEnabled("deepedit")
+        # self.ui.dgPositiveControlPointPlacementWidget.setEnabled("deepedit")
 
         # All the GUI updates are done
         self._updatingGUIFromParameterNode = False
