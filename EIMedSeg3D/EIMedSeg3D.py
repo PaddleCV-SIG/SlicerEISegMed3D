@@ -29,9 +29,7 @@ class EIMedSeg3D(ScriptedLoadableModule):
             "Interactive Segmentation"
         ]  # TODO: set categories (folders where the module shows up in the module selector)
         self.parent.dependencies = []  # TODO: add here list of module names that this module requires
-        self.parent.contributors = [
-            "Lin Han, Daisy (Baidu Corp.)"
-        ]
+        self.parent.contributors = ["Lin Han, Daisy (Baidu Corp.)"]
         # TODO: update with short description of the module and a link to online module documentation
         self.parent.helpText = """
 This is an example of scripted loadable module bundled in an extension.
@@ -53,7 +51,6 @@ and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR0132
             # print("here")
             # self.settingsPanel = MONAILabelSettingsPanel()
             # slicer.app.settingsDialog().addPanel("MONAI Label", self.settingsPanel)
-
 
 
 #
@@ -190,8 +187,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.dgNegativeControlPointPlacementWidget.placeButton().toolTip = "Select negative points"
         self.ui.dgNegativeControlPointPlacementWidget.buttonsVisible = False
         self.ui.dgNegativeControlPointPlacementWidget.placeButton().show()
-        
-        
+
         # print("===", type())
         # self.ui.dgPositiveControlPointPlacementWidget.deleteButton().hide()
 
@@ -298,7 +294,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         )
         self.dgNegativePointListNode = None
 
-
     def resetPointList(self, markupsPlaceWidget, pointListNode, pointListNodeObservers):
         if markupsPlaceWidget.placeModeEnabled:
             markupsPlaceWidget.setPlaceModeEnabled(False)
@@ -388,16 +383,15 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             ) = self.createPointListNode("P", self.onDeepGrowPointListNodeModified, [0.5, 1, 0.5])
             self.ui.dgPositiveControlPointPlacementWidget.setCurrentNode(self.dgPositivePointListNode)
             self.ui.dgPositiveControlPointPlacementWidget.setPlaceModeEnabled(False)
-        
+
         if not self.dgNegativePointListNode:
             (
                 self.dgNegativePointListNode,
                 self.dgNegativePointListNodeObservers,
             ) = self.createPointListNode("P", self.onDeepGrowPointListNodeModified, [0.5, 1, 0.5])
-            
+
             self.ui.dgNegativeControlPointPlacementWidget.setCurrentNode(self.dgNegativePointListNode)
             self.ui.dgNegativeControlPointPlacementWidget.setPlaceModeEnabled(False)
-            
 
         # self.ui.dgPositiveControlPointPlacementWidget.setEnabled(self.ui.deepgrowModelSelector.currentText)
         # self.ui.dgPositiveControlPointPlacementWidget.setEnabled("deepedit")
@@ -479,7 +473,10 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def onDeepGrowPointListNodeModified(self, observer, eventid):
         logging.debug("Deepgrow Point Event!!")
         print("onDeepGrowPointListNodeModified")
-        print(self.ui.dgPositiveControlPointPlacementWidget.nodeColor, self.ui.dgPositiveControlPointPlacementWidget.defaultNodeColor)
+        print(
+            self.ui.dgPositiveControlPointPlacementWidget.nodeColor,
+            self.ui.dgPositiveControlPointPlacementWidget.defaultNodeColor,
+        )
 
         # print(self.dgPositivePointListNode)
         # print("================================", self.getControlPointsXYZ(self.dgPositivePointListNode, "foreground"))
