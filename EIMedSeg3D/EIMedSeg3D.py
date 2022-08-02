@@ -460,9 +460,17 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         
 
         self.ignorePointListNodeAddEvent = True
+        
         # maybe run inference here
-        # time.sleep(3)
+        with slicer.util.tryWithErrorDisplay("Failed to compute results.", waitCursor=True):
+            self.ui.progressBar.setValue(33)
+            time.sleep(1)
+            self.ui.progressBar.setValue(66)
+            time.sleep(1)
+            self.ui.progressBar.setValue(100)
+
         self.ignorePointListNodeAddEvent = False
+        
         
         # self.onEditControlPoints(self.dgPositivePointListNode, "positive")
         # self.onEditControlPoints(self.dgNegativePointListNode, "MONAILabel.BackgroundPoints")
