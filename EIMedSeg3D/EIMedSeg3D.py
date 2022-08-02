@@ -124,8 +124,10 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.logic = None
         self._parameterNode = None
-        self._volumeNode = None
+        self._currVolumeNode = None
+        self._allVolumeNodes = []
         self._segmentNode = None
+        self._thresh = 0.9  # output threshold
 
         self._updatingGUIFromParameterNode = False
 
@@ -165,17 +167,14 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # These connections ensure that whenever user changes some settings on the GUI, that is saved in the MRML scene
         # (in the selected parameter node).
-        # self.ui.inputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
-        # self.ui.outputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
-        # self.ui.imageThresholdSliderWidget.connect("valueChanged(double)", self.updateParameterNodeFromGUI)
-        # self.ui.invertOutputCheckBox.connect("toggled(bool)", self.updateParameterNodeFromGUI)
-        # self.ui.invertedOutputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
+        self.ui.volumeSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
+        self.ui.threshSlider.connect("valueChanged(double)", self.updateParameterNodeFromGUI)
+        # TODO: sync select two paths to scene?
 
         # Buttons
-        # self.ui.applyButton.connect("clicked(bool)", self.onApplyButton)
         self.ui.loadModelButton.connect("clicked(bool)", self.loadModelClicked)
 
-        # Points
+        # Positive/Negative Point
         self.ui.dgPositiveControlPointPlacementWidget.setMRMLScene(slicer.mrmlScene)
         self.ui.dgPositiveControlPointPlacementWidget.placeButton().toolTip = "Select positive points"
         self.ui.dgPositiveControlPointPlacementWidget.buttonsVisible = False
@@ -186,8 +185,20 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.dgNegativeControlPointPlacementWidget.buttonsVisible = False
         self.ui.dgNegativeControlPointPlacementWidget.placeButton().show()
 
+        # Segment editor
+        self.ui.embeddedSegmentEditorWidget.setMRMLScene(slicer.mrmlScene)
+        # self.ui.embeddedSegmentEditorWidget.setSegmentationNodeSelectorVisible(False)
+        # self.ui.embeddedSegmentEditorWidget.setMasterVolumeNodeSelectorVisible(False)
+        self.ui.embeddedSegmentEditorWidget.setMRMLSegmentEditorNode(self.logic.get_segment_editor_node())
+
+        # self.ui.embeddedSegmentEditorWidget.setSegmentationNode(segmentationNode)
+        # self.ui.embeddedSegmentEditorWidget.setMasterVolumeNode(self._volumeNode)
+        # self.ui.embeddedSegmentEditorWidget.setCurrentSegmentID(existing_label_ids[label])
+
         self.initializeParameterNode()
 
+        # Set place point widget colors
+        # TODO: move to initializeParameterNode
         self.ui.dgPositiveControlPointPlacementWidget.setNodeColor(qt.QColor(0, 255, 0))
         self.ui.dgNegativeControlPointPlacementWidget.setNodeColor(qt.QColor(255, 0, 0))
 
@@ -220,14 +231,21 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def getThresh(self):
         return self.ui.threshSlider.value
 
-    # CreateAndAddLabelVolume
     def loadModelClicked(self):
-        pass
+        # self._volumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
+        volumeCollection = slicer.mrmlScene.GetNodesByClass("vtkMRMLScalarVolumeNode")
+        for idx in range(volumeCollection.GetNumberOfItems()):
+            self._allVolumeNodes.append(volumeCollection.GetItemAsObject(idx))
+
+        for v in self._allVolumeNodes:
+            self.ui.volumeSelector.addItem(v.GetName())
+            # self.ui.volumeSelector.setToolTip(self.current_sample.get("name", "") if self.current_sample else "")
+
         # self.ui.dgPositiveControlPointPlacementWidget.setPlaceModeEnabled(True)
         # self.ui.dgNegativeControlPointPlacementWidget.setPlaceModeEnabled(True)
 
     def onSceneEndImport(self, caller, event):
-        if not self._volumeNode:
+        if not self._allVolumeNodes:
             self.updateGUIFromParameterNode()
 
     def cleanup(self):
@@ -262,6 +280,10 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         print("onSceneStartClose")
         # Parameter node will be reset, do not use it anymore
+        self._currVolumeNode = None
+        self._allVolumeNodes.clear()
+        self._segmentNode = None
+
         self.setParameterNode(None)
         self.resetPointList(
             self.ui.dgPositiveControlPointPlacementWidget,
@@ -354,6 +376,10 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         if self._parameterNode is None or self._updatingGUIFromParameterNode:
             return
+
+        for v in self._allVolumeNodes:
+            self.ui.volumeSelector.addItem(v.GetName())
+            self.ui.volumeSelector.setToolTip(self.current_sample.get("name", "") if self.current_sample else "")
 
         # Make sure GUI changes do not call updateParameterNodeFromGUI (it could cause infinite loop)
         self._updatingGUIFromParameterNode = True
@@ -453,6 +479,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         pass
 
     def onControlPointAdded(self, observer, eventid):
+        print("=====")
         pos_points = self.getControlPointsXYZ(self.dgPositivePointListNode, "positive")
         neg_points = self.getControlPointsXYZ(self.dgNegativePointListNode, "negative")
 
@@ -465,6 +492,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # maybe run inference here
         with slicer.util.tryWithErrorDisplay("Failed to compute results.", waitCursor=True):
+            logging.info(f"Threshold: {self.getThresh()}")
             self.ui.progressBar.setValue(33)
             time.sleep(1)
             self.ui.progressBar.setValue(66)
@@ -726,6 +754,19 @@ class EIMedSeg3DLogic(ScriptedLoadableModuleLogic):
 
         stopTime = time.time()
         logging.info(f"Processing completed in {stopTime-startTime:.2f} seconds")
+
+    def get_segment_editor_node(self):
+        # Use the Segment Editor module's parameter node for the embedded segment editor widget.
+        # This ensures that if the user switches to the Segment Editor then the selected
+        # segmentation node, volume node, etc. are the same.
+        segmentEditorSingletonTag = "SegmentEditor"
+        segmentEditorNode = slicer.mrmlScene.GetSingletonNode(segmentEditorSingletonTag, "vtkMRMLSegmentEditorNode")
+        if segmentEditorNode is None:
+            segmentEditorNode = slicer.mrmlScene.CreateNodeByClass("vtkMRMLSegmentEditorNode")
+            segmentEditorNode.UnRegister(None)
+            segmentEditorNode.SetSingletonTag(segmentEditorSingletonTag)
+            segmentEditorNode = slicer.mrmlScene.AddNode(segmentEditorNode)
+        return segmentEditorNode
 
 
 #

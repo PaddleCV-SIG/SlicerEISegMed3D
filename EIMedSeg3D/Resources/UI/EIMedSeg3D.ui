@@ -36,11 +36,15 @@
     </layout>
    </item>
    <item>
-    <widget class="QPushButton" name="loadModelButton">
-     <property name="text">
-      <string>Load Model</string>
-     </property>
-    </widget>
+    <layout class="QHBoxLayout" name="loadModelLayout">
+     <item>
+      <widget class="QPushButton" name="loadModelButton">
+       <property name="text">
+        <string>Load Model</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
    </item>
    <item>
     <widget class="Line" name="line_2">
@@ -50,16 +54,16 @@
     </widget>
    </item>
    <item>
-    <layout class="QHBoxLayout" name="chooseVolumeLayout">
+    <layout class="QHBoxLayout" name="volumeSelectorLayout">
      <item>
-      <widget class="QLabel" name="chooseVolumeLabel">
+      <widget class="QLabel" name="volumeSelectorLabel">
        <property name="text">
         <string>Choose Volume:</string>
        </property>
       </widget>
      </item>
      <item>
-      <widget class="QComboBox" name="chooseVolumeBox"/>
+      <widget class="QComboBox" name="volumeSelector"/>
      </item>
     </layout>
    </item>
@@ -166,13 +170,6 @@
     </layout>
    </item>
    <item>
-    <widget class="Line" name="line">
-     <property name="orientation">
-      <enum>Qt::Horizontal</enum>
-     </property>
-    </widget>
-   </item>
-   <item>
     <layout class="QHBoxLayout" name="progressLayout">
      <item>
       <widget class="QLabel" name="progressLabel">
@@ -189,6 +186,16 @@
       </widget>
      </item>
     </layout>
+   </item>
+   <item>
+    <widget class="Line" name="line">
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="qMRMLSegmentEditorWidget" name="embeddedSegmentEditorWidget"/>
    </item>
    <item>
     <spacer name="verticalSpacer">
@@ -232,6 +239,11 @@
    <class>qSlicerMarkupsPlaceWidget</class>
    <extends>qSlicerWidget</extends>
    <header>qSlicerMarkupsPlaceWidget.h</header>
+  </customwidget>
+  <customwidget>
+   <class>qMRMLSegmentEditorWidget</class>
+   <extends>qMRMLWidget</extends>
+   <header>qMRMLSegmentEditorWidget.h</header>
   </customwidget>
  </customwidgets>
  <resources/>
