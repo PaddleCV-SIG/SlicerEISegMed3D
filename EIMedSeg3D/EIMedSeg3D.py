@@ -293,12 +293,15 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             segmentation = self._segmentNode.GetSegmentation()
             segmentId = segmentation.GetSegmentIdBySegmentName("Tissue")
 
+            # get current seg mask as numpy
             res = slicer.util.arrayFromSegmentBinaryLabelmap(self._segmentNode, segmentId, self._currVolumeNode)
 
+            # add new
             p = newPointPos
             p = [p[2], p[1], p[0]]
             res[p[0] - 10 : p[0] + 10, p[1] - 10 : p[1] + 10, p[2] - 10 : p[2] + 10] = 1
 
+            # set new numpy mask to segmentation
             slicer.util.updateSegmentBinaryLabelmapFromArray(res, self._segmentNode, segmentId, self._currVolumeNode)
 
             # segmentId = segmentation.GetSegmentIdBySegmentName("Tissue")
