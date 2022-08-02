@@ -217,6 +217,9 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         return data_np
 
+    def getThresh(self):
+        return self.ui.threshSlider.value
+
     # CreateAndAddLabelVolume
     def loadModelClicked(self):
         pass
@@ -452,15 +455,14 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def onControlPointAdded(self, observer, eventid):
         pos_points = self.getControlPointsXYZ(self.dgPositivePointListNode, "positive")
         neg_points = self.getControlPointsXYZ(self.dgNegativePointListNode, "negative")
-        
+
         newPointIndex = observer.GetDisplayNode().GetActiveControlPoint()
         new_point_pos = self.getControlPointXYZ(observer, newPointIndex)
         is_positive_point = new_point_pos == pos_points[-1]
         logging.info(f"New point: {new_point_pos}, is positive: {is_positive_point}")
-        
 
         self.ignorePointListNodeAddEvent = True
-        
+
         # maybe run inference here
         with slicer.util.tryWithErrorDisplay("Failed to compute results.", waitCursor=True):
             self.ui.progressBar.setValue(33)
@@ -470,8 +472,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.progressBar.setValue(100)
 
         self.ignorePointListNodeAddEvent = False
-        
-        
+
         # self.onEditControlPoints(self.dgPositivePointListNode, "positive")
         # self.onEditControlPoints(self.dgNegativePointListNode, "MONAILabel.BackgroundPoints")
         # self.ignorePointListNodeAddEvent = False
