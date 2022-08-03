@@ -36,14 +36,39 @@
     </layout>
    </item>
    <item>
-    <widget class="QPushButton" name="loadModelButton">
-     <property name="text">
-      <string>Load Model</string>
+    <layout class="QHBoxLayout" name="loadModelLayout">
+     <item>
+      <widget class="QPushButton" name="loadModelButton">
+       <property name="text">
+        <string>Load Model</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="Line" name="line_2">
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
      </property>
     </widget>
    </item>
    <item>
-    <widget class="Line" name="line_2">
+    <layout class="QHBoxLayout" name="volumeSelectorLayout">
+     <item>
+      <widget class="QLabel" name="volumeSelectorLabel">
+       <property name="text">
+        <string>Choose Volume:</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QComboBox" name="volumeSelector"/>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="Line" name="line_3">
      <property name="orientation">
       <enum>Qt::Horizontal</enum>
      </property>
@@ -59,7 +84,58 @@
       </widget>
      </item>
      <item>
-      <widget class="qSlicerMarkupsPlaceWidget" name="dgPositiveControlPointPlacementWidget"/>
+      <widget class="qSlicerMarkupsPlaceWidget" name="dgPositiveControlPointPlacementWidget">
+       <property name="buttonsVisible">
+        <bool>false</bool>
+       </property>
+       <property name="placeMultipleMarkups">
+        <enum>qSlicerMarkupsPlaceWidget::ForcePlaceMultipleMarkups</enum>
+       </property>
+       <property name="nodeColor">
+        <color>
+         <red>0</red>
+         <green>1</green>
+         <blue>0</blue>
+        </color>
+       </property>
+       <property name="placeModePersistency">
+        <bool>false</bool>
+       </property>
+       <property name="deleteAllMarkupsOptionVisible">
+        <bool>false</bool>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="negativeLayout">
+     <item>
+      <widget class="QLabel" name="negativeLabel">
+       <property name="text">
+        <string>Negative Point:</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="qSlicerMarkupsPlaceWidget" name="dgNegativeControlPointPlacementWidget">
+       <property name="buttonsVisible">
+        <bool>false</bool>
+       </property>
+       <property name="deleteAllControlPointsOptionVisible">
+        <bool>false</bool>
+       </property>
+       <property name="placeMultipleMarkups">
+        <enum>qSlicerMarkupsPlaceWidget::ForcePlaceMultipleMarkups</enum>
+       </property>
+       <property name="nodeColor">
+        <color>
+         <red>0</red>
+         <green>1</green>
+         <blue>0</blue>
+        </color>
+       </property>
+      </widget>
      </item>
     </layout>
    </item>
@@ -73,7 +149,41 @@
       </widget>
      </item>
      <item>
-      <widget class="ctkSliderWidget" name="threshSlider"/>
+      <widget class="ctkSliderWidget" name="threshSlider">
+       <property name="decimals">
+        <number>2</number>
+       </property>
+       <property name="singleStep">
+        <double>0.010000000000000</double>
+       </property>
+       <property name="pageStep">
+        <double>0.100000000000000</double>
+       </property>
+       <property name="maximum">
+        <double>1.000000000000000</double>
+       </property>
+       <property name="value">
+        <double>0.900000000000000</double>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="progressLayout">
+     <item>
+      <widget class="QLabel" name="progressLabel">
+       <property name="text">
+        <string>Progress:</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QProgressBar" name="progressBar">
+       <property name="value">
+        <number>0</number>
+       </property>
+      </widget>
      </item>
     </layout>
    </item>
@@ -83,6 +193,9 @@
       <enum>Qt::Horizontal</enum>
      </property>
     </widget>
+   </item>
+   <item>
+    <widget class="qMRMLSegmentEditorWidget" name="embeddedSegmentEditorWidget"/>
    </item>
    <item>
     <spacer name="verticalSpacer">
@@ -126,6 +239,11 @@
    <class>qSlicerMarkupsPlaceWidget</class>
    <extends>qSlicerWidget</extends>
    <header>qSlicerMarkupsPlaceWidget.h</header>
+  </customwidget>
+  <customwidget>
+   <class>qMRMLSegmentEditorWidget</class>
+   <extends>qMRMLWidget</extends>
+   <header>qMRMLSegmentEditorWidget.h</header>
   </customwidget>
  </customwidgets>
  <resources/>

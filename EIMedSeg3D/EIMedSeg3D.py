@@ -2,8 +2,12 @@ import logging
 import os
 import time
 
+import SimpleITK as sitk
+import sitkUtils
 import vtk
 import numpy as np
+import nibabel as nib
+import qt
 
 import ctk
 import slicer
@@ -11,7 +15,6 @@ import SimpleITK as sitk
 from paddle.inference import create_predictor,Config
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
-
 
 #
 # EIMedSeg3D
@@ -30,9 +33,7 @@ class EIMedSeg3D(ScriptedLoadableModule):
             "Interactive Segmentation"
         ]  # TODO: set categories (folders where the module shows up in the module selector)
         self.parent.dependencies = []  # TODO: add here list of module names that this module requires
-        self.parent.contributors = [
-            "Lin Han, Daisy (Baidu Corp.)"
-        ]  # TODO: replace with "Firstname Lastname (Organization)"
+        self.parent.contributors = ["Lin Han, Daisy (Baidu Corp.)"]
         # TODO: update with short description of the module and a link to online module documentation
         self.parent.helpText = """
 This is an example of scripted loadable module bundled in an extension.
@@ -54,7 +55,6 @@ and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR0132
             # print("here")
             # self.settingsPanel = MONAILabelSettingsPanel()
             # slicer.app.settingsDialog().addPanel("MONAI Label", self.settingsPanel)
-
 
 
 #
@@ -128,10 +128,13 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.logic = None
         self._parameterNode = None
-        self._volumeNode = None
+        self._currVolumeNode = None
+        self._allVolumeNodes = []
         self._segmentNode = None
+        self._thresh = 0.9  # output threshold
 
         self._updatingGUIFromParameterNode = False
+        self._endImportProcessing = False
 
         self.dgPositivePointListNode = None
         self.dgPositivePointListNodeObservers = []
@@ -169,30 +172,215 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # These connections ensure that whenever user changes some settings on the GUI, that is saved in the MRML scene
         # (in the selected parameter node).
-        # self.ui.inputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
-        # self.ui.outputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
-        # self.ui.imageThresholdSliderWidget.connect("valueChanged(double)", self.updateParameterNodeFromGUI)
-        # self.ui.invertOutputCheckBox.connect("toggled(bool)", self.updateParameterNodeFromGUI)
-        # self.ui.invertedOutputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
+        self.ui.volumeSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
+        self.ui.threshSlider.connect("valueChanged(double)", self.updateParameterNodeFromGUI)
+        # TODO: sync select two paths to scene?
 
         # Buttons
-        # self.ui.applyButton.connect("clicked(bool)", self.onApplyButton)
         self.ui.loadModelButton.connect("clicked(bool)", self.loadModelClicked)
 
-        # Points
+        # Positive/Negative Point
         self.ui.dgPositiveControlPointPlacementWidget.setMRMLScene(slicer.mrmlScene)
-        self.ui.dgPositiveControlPointPlacementWidget.placeButton().toolTip = "Select +ve points"
+        self.ui.dgPositiveControlPointPlacementWidget.placeButton().toolTip = "Select positive points"
         self.ui.dgPositiveControlPointPlacementWidget.buttonsVisible = False
         self.ui.dgPositiveControlPointPlacementWidget.placeButton().show()
-        self.ui.dgPositiveControlPointPlacementWidget.deleteButton().show()
 
-        # self.dgPositivePointListNode = None
-        # self.dgPositivePointListNodeObservers = []
+        self.ui.dgNegativeControlPointPlacementWidget.setMRMLScene(slicer.mrmlScene)
+        self.ui.dgNegativeControlPointPlacementWidget.placeButton().toolTip = "Select negative points"
+        self.ui.dgNegativeControlPointPlacementWidget.buttonsVisible = False
+        self.ui.dgNegativeControlPointPlacementWidget.placeButton().show()
+
+        # Segment editor
+        self.ui.embeddedSegmentEditorWidget.setMRMLScene(slicer.mrmlScene)
+        # self.ui.embeddedSegmentEditorWidget.setSegmentationNodeSelectorVisible(False)
+        # self.ui.embeddedSegmentEditorWidget.setMasterVolumeNodeSelectorVisible(False)
+        self.ui.embeddedSegmentEditorWidget.setMRMLSegmentEditorNode(self.logic.get_segment_editor_node())
+
+        # self.ui.embeddedSegmentEditorWidget.setSegmentationNode(segmentationNode)
+        # self.ui.embeddedSegmentEditorWidget.setMasterVolumeNode(self._volumeNode)
+        # self.ui.embeddedSegmentEditorWidget.setCurrentSegmentID(existing_label_ids[label])
+
         self.initializeParameterNode()
 
-    
-    def getImageData(self):
-        volumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")        
+        # Set place point widget colors
+        # TODO: move to initializeParameterNode
+        self.ui.dgPositiveControlPointPlacementWidget.setNodeColor(qt.QColor(0, 255, 0))
+        self.ui.dgNegativeControlPointPlacementWidget.setNodeColor(qt.QColor(255, 0, 0))
+
+    def getThresh(self):
+        return self.ui.threshSlider.value
+
+    def loadModelClicked(self):
+        # self._volumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
+
+        # self.ui.dgPositiveControlPointPlacementWidget.setPlaceModeEnabled(True)
+        # self.ui.dgNegativeControlPointPlacementWidget.setPlaceModeEnabled(True)
+        print(len(self._allVolumeNodes))
+        self._segmentNode = None
+        self.onSceneEndImport(None, None)
+        pass
+
+    def onSceneEndImport(self, caller, event):
+        if self._endImportProcessing:
+            return
+
+        self._endImportProcessing = True
+
+        # get all volumes
+        volumeCollection = slicer.mrmlScene.GetNodesByClass("vtkMRMLScalarVolumeNode")
+        self._allVolumeNodes.clear()
+        for idx in range(volumeCollection.GetNumberOfItems()):
+            self._allVolumeNodes.append(volumeCollection.GetItemAsObject(idx))
+
+        # unset curr volume if not exist
+        names = [v.GetName() for v in self._allVolumeNodes]
+        if self._currVolumeNode is not None and self._currVolumeNode.GetName() not in names:
+            self._currVolumeNode = None
+
+        # set curr voulme if not set
+        if len(self._allVolumeNodes) != 0 and self._currVolumeNode is None:
+            self._currVolumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
+
+        # update volume selector
+        self.ui.volumeSelector.clear()
+        for v in self._allVolumeNodes:
+            self.ui.volumeSelector.addItem(v.GetName())
+            # self.ui.volumeSelector.setToolTip(self.current_sample.get("name", "") if self.current_sample else "")
+
+        # set current node in selector and init segment editor
+        if self._currVolumeNode is not None:
+            self.ui.volumeSelector.setCurrentIndex(self.ui.volumeSelector.findText(self._currVolumeNode.GetName()))
+
+            if self._segmentNode is None:
+                name = "segmentation_" + self._currVolumeNode.GetName()
+                self._segmentNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
+                self._segmentNode.SetReferenceImageGeometryParameterFromVolumeNode(self._currVolumeNode)
+                self._segmentNode.SetName(name)
+
+                segmentation = self._segmentNode.GetSegmentation()
+                segmentation.AddEmptySegment("Tissue", "Tissue", [0, 0, 1.0])
+
+            self.ui.embeddedSegmentEditorWidget.setSegmentationNode(self._segmentNode)
+            self.ui.embeddedSegmentEditorWidget.setMasterVolumeNode(self._currVolumeNode)
+
+            # self.ui.embeddedSegmentEditorWidget.setCurrentSegmentID
+
+        self._endImportProcessing = False
+        # if not self._allVolumeNodes:
+        #     self.updateGUIFromParameterNode()
+
+    def onControlPointAdded(self, observer, eventid):
+        print("=====")
+        posPoints = self.getControlPointsXYZ(self.dgPositivePointListNode, "positive")
+        negPoints = self.getControlPointsXYZ(self.dgNegativePointListNode, "negative")
+
+        newPointIndex = observer.GetDisplayNode().GetActiveControlPoint()
+        newPointPos = self.getControlPointXYZ(observer, newPointIndex)
+        isPositivePoint = False if len(posPoints) == 0 else newPointPos == posPoints[-1]
+        logging.info(f"New point: {newPointPos}, is positive: {isPositivePoint}")
+
+        self.ignorePointListNodeAddEvent = True
+
+        # maybe run inference here
+        with slicer.util.tryWithErrorDisplay("Failed to compute results.", waitCursor=True):
+            logging.info(f"Threshold: {self.getThresh()}")
+            # self.ui.progressBar.setValue(33)
+            # time.sleep(1)
+            # self.ui.progressBar.setValue(66)
+            # time.sleep(1)
+            self.ui.progressBar.setValue(100)
+
+            # shape = self._currVolumeNode.GetImageData().GetDimensions()
+
+            segmentation = self._segmentNode.GetSegmentation()
+            segmentId = segmentation.GetSegmentIdBySegmentName("Tissue")
+
+            # get current seg mask as numpy
+            res = slicer.util.arrayFromSegmentBinaryLabelmap(self._segmentNode, segmentId, self._currVolumeNode)
+
+            # add new
+            p = newPointPos
+            p = [p[2], p[1], p[0]]
+            res[p[0] - 10 : p[0] + 10, p[1] - 10 : p[1] + 10, p[2] - 10 : p[2] + 10] = 1
+
+            # set new numpy mask to segmentation
+            slicer.util.updateSegmentBinaryLabelmapFromArray(res, self._segmentNode, segmentId, self._currVolumeNode)
+
+            # segmentId = segmentation.GetSegmentIdBySegmentName("Tissue")
+            # self.ui.embeddedSegmentEditorWidget.setCurrentSegmentID(segmentId)
+            # effect = self.ui.embeddedSegmentEditorWidget.effectByName("Paint")
+            # effect.setParameter("BrushSphere", True)
+            # selectedSegmentLabelmap = effect.selectedSegmentLabelmap()
+
+            # img =
+            # nib_img = nib.Nifti1Image(data, np.eye(4))
+            # nib.save(nib_img, "/home/lin/Desktop/test.nii.gz")
+
+            # labelImage = sitk.ReadImage(in_file)
+            # labelmapVolumeNode = sitkUtils.PushVolumeToSlicer(labelImage, None, className="vtkMRMLLabelMapVolumeNode")
+
+            # newLabelmap = slicer.vtkOrientedImageData()
+            # self._segmentNode.GetBinaryLabelmapRepresentation(segmentId, newLabelmap)
+
+            # effect.modifySelectedSegmentByLabelmap(
+            #     newLabelmap, slicer.qSlicerSegmentEditorAbstractEffect.ModificationModeAdd
+            # )
+
+        self.ignorePointListNodeAddEvent = False
+
+        # self.onEditControlPoints(self.dgPositivePointListNode, "positive")
+        # self.onEditControlPoints(self.dgNegativePointListNode, "MONAILabel.BackgroundPoints")
+        # self.ignorePointListNodeAddEvent = False
+
+    def getControlPointXYZ(self, pointListNode, index):
+        v = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
+        # v = self._volumeNode
+        RasToIjkMatrix = vtk.vtkMatrix4x4()
+        v.GetRASToIJKMatrix(RasToIjkMatrix)
+
+        coord = pointListNode.GetNthControlPointPosition(index)
+
+        world = [0, 0, 0]
+        pointListNode.GetNthControlPointPositionWorld(index, world)
+
+        p_Ras = [coord[0], coord[1], coord[2], 1.0]
+        p_Ijk = RasToIjkMatrix.MultiplyDoublePoint(p_Ras)
+        p_Ijk = [round(i) for i in p_Ijk]
+
+        logging.debug(f"RAS: {coord}; WORLD: {world}; IJK: {p_Ijk}")
+        return p_Ijk[0:3]
+
+    def getControlPointsXYZ(self, pointListNode, name):
+        v = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
+        # v = self._volumeNode
+        RasToIjkMatrix = vtk.vtkMatrix4x4()
+        v.GetRASToIJKMatrix(RasToIjkMatrix)
+
+        point_set = []
+        n = pointListNode.GetNumberOfControlPoints()
+        for i in range(n):
+            coord = pointListNode.GetNthControlPointPosition(i)
+
+            world = [0, 0, 0]
+            pointListNode.GetNthControlPointPositionWorld(i, world)
+
+            p_Ras = [coord[0], coord[1], coord[2], 1.0]
+            p_Ijk = RasToIjkMatrix.MultiplyDoublePoint(p_Ras)
+            p_Ijk = [round(i) for i in p_Ijk]
+
+            logging.info(f"RAS: {coord}; WORLD: {world}; IJK: {p_Ijk}")
+            point_set.append(p_Ijk[0:3])
+
+        logging.info(f"{name} => Current control points: {point_set}")
+        return point_set
+
+    def getImageData(self, save=False):
+        volumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
+        print(volumeNode)
+        if volumeNode is None:
+            return None
+        image_id = volumeNode.GetName()
+        print(image_id)
         s = img_data.GetDimensions()
         data_np = np.zeros(s)
         tic = time.time()
@@ -200,34 +388,17 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             for y in range(s[1]):
                 for z in range(s[2]):
                     data_np[x, y, z] = img_data.GetScalarComponentAsFloat(x, y, z, 0)
-        # np.save("/home/lin/Desktop/data.npy", data_np)
+        if save:
+            np.save("/home/lin/Desktop/data.npy", data_np)
+
+        """
+        import nibabel as nib
+        data = np.load('/home/lin/Desktop/data.npy')
+        nib_img = nib.Nifti1Image(data, np.eye(4))
+        nib.save(nib_img, "/home/lin/Desktop/test.nii.gz")
+        """
+
         return data_np
-
-# CreateAndAddLabelVolume
-    def loadModelClicked(self):
-        # volumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
-        
-        # s = img_data.GetDimensions()
-        # data_np = np.zeros(s)
-        # tic = time.time()
-        # for x in range(s[0]):
-        #     for y in range(s[1]):
-        #         for z in range(s[2]):
-        #             data_np[x, y, z] = img_data.GetScalarComponentAsFloat(x, y, z, 0)
-        # np.save("/home/lin/Desktop/data.npy", data_np)
-
-        # print(volumeNode.GetImageData(), type(volumeNode.GetImageData()))
-        # print("=====================================", self.getControlPointsXYZ(self.dgPositivePointListNode, "foreground"))
-
-        # print(volumeNode.data)
-        # image_id = volumeNode.GetName()
-        self.ui.dgPositiveControlPointPlacementWidget.setPlaceModeEnabled(True)
-
-        
-
-    def onSceneEndImport(self, caller, event):
-        if not self._volumeNode:
-            self.updateGUIFromParameterNode()
 
     def cleanup(self):
         """
@@ -261,6 +432,10 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         print("onSceneStartClose")
         # Parameter node will be reset, do not use it anymore
+        self._currVolumeNode = None
+        self._allVolumeNodes.clear()
+        self._segmentNode = None
+
         self.setParameterNode(None)
         self.resetPointList(
             self.ui.dgPositiveControlPointPlacementWidget,
@@ -268,6 +443,12 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.dgPositivePointListNodeObservers,
         )
         self.dgPositivePointListNode = None
+        self.resetPointList(
+            self.ui.dgNegativeControlPointPlacementWidget,
+            self.dgNegativePointListNode,
+            self.dgNegativePointListNodeObservers,
+        )
+        self.dgNegativePointListNode = None
 
     def resetPointList(self, markupsPlaceWidget, pointListNode, pointListNodeObservers):
         if markupsPlaceWidget.placeModeEnabled:
@@ -348,21 +529,32 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if self._parameterNode is None or self._updatingGUIFromParameterNode:
             return
 
+        for v in self._allVolumeNodes:
+            self.ui.volumeSelector.addItem(v.GetName())
+            # self.ui.volumeSelector.setToolTip(self.current_sample.get("name", "") if self.current_sample else "")
+
         # Make sure GUI changes do not call updateParameterNodeFromGUI (it could cause infinite loop)
         self._updatingGUIFromParameterNode = True
-        print("_+_+", self.dgPositivePointListNode)
+        # print("_+_+", self.dgPositivePointListNode)
         if not self.dgPositivePointListNode:
             (
                 self.dgPositivePointListNode,
                 self.dgPositivePointListNodeObservers,
-            ) = self.createPointListNode("P", self.onDeepGrowPointListNodeModified, [0.5, 1, 0.5])
-            print("----", type(self.dgPositivePointListNode), self.dgPositivePointListNode)
-
+            ) = self.createPointListNode("P", self.onControlPointAdded, [0.5, 1, 0.5])
             self.ui.dgPositiveControlPointPlacementWidget.setCurrentNode(self.dgPositivePointListNode)
             self.ui.dgPositiveControlPointPlacementWidget.setPlaceModeEnabled(False)
 
+        if not self.dgNegativePointListNode:
+            (
+                self.dgNegativePointListNode,
+                self.dgNegativePointListNodeObservers,
+            ) = self.createPointListNode("P", self.onControlPointAdded, [0.5, 1, 0.5])
+
+            self.ui.dgNegativeControlPointPlacementWidget.setCurrentNode(self.dgNegativePointListNode)
+            self.ui.dgNegativeControlPointPlacementWidget.setPlaceModeEnabled(False)
+
         # self.ui.dgPositiveControlPointPlacementWidget.setEnabled(self.ui.deepgrowModelSelector.currentText)
-        self.ui.dgPositiveControlPointPlacementWidget.setEnabled("deepedit")
+        # self.ui.dgPositiveControlPointPlacementWidget.setEnabled("deepedit")
 
         # All the GUI updates are done
         self._updatingGUIFromParameterNode = False
@@ -416,67 +608,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         Run processing when user clicks "Apply" button.
         """
-        # with slicer.util.tryWithErrorDisplay("Failed to compute results.", waitCursor=True):
-
-        #     # Compute output
-        #     self.logic.process(
-        #         self.ui.inputSelector.currentNode(),
-        #         self.ui.outputSelector.currentNode(),
-        #         self.ui.imageThresholdSliderWidget.value,
-        #         self.ui.invertOutputCheckBox.checked,
-        #     )
-
-        #     # Compute inverted output (if needed)
-        #     if self.ui.invertedOutputSelector.currentNode():
-        #         # If additional output volume is selected then result with inverted threshold is written there
-        #         self.logic.process(
-        #             self.ui.inputSelector.currentNode(),
-        #             self.ui.invertedOutputSelector.currentNode(),
-        #             self.ui.imageThresholdSliderWidget.value,
-        #             not self.ui.invertOutputCheckBox.checked,
-        #             showResult=False,
-        #         )
         pass
-
-    def onDeepGrowPointListNodeModified(self, observer, eventid):
-        logging.debug("Deepgrow Point Event!!")
-        print("onDeepGrowPointListNodeModified")
-        print(self.dgPositivePointListNode)
-        print("================================", self.getControlPointsXYZ(self.dgPositivePointListNode, "foreground"))
-
-        # markupsNode = observer
-        # movingMarkupIndex = markupsNode.GetDisplayNode().GetActiveControlPoint()
-        # logging.debug(f"Markup point added; point ID = {movingMarkupIndex}")
-
-        # current_point = self.getControlPointXYZ(markupsNode, movingMarkupIndex)
-
-        # if not self.ui.dgUpdateCheckBox.checked:
-        #     self.onClickDeepgrow(current_point, skip_infer=True)
-        #     return
-
-        # self.onClickDeepgrow(current_point)
-
-        # self.ignorePointListNodeAddEvent = True
-        # self.onEditControlPoints(self.dgPositivePointListNode, "MONAILabel.ForegroundPoints")
-        # self.onEditControlPoints(self.dgNegativePointListNode, "MONAILabel.BackgroundPoints")
-        # self.ignorePointListNodeAddEvent = False
-
-    def getControlPointXYZ(self, pointListNode, index):
-        v = self._volumeNode
-        RasToIjkMatrix = vtk.vtkMatrix4x4()
-        v.GetRASToIJKMatrix(RasToIjkMatrix)
-
-        coord = pointListNode.GetNthControlPointPosition(index)
-
-        world = [0, 0, 0]
-        pointListNode.GetNthControlPointPositionWorld(index, world)
-
-        p_Ras = [coord[0], coord[1], coord[2], 1.0]
-        p_Ijk = RasToIjkMatrix.MultiplyDoublePoint(p_Ras)
-        p_Ijk = [round(i) for i in p_Ijk]
-
-        logging.debug(f"RAS: {coord}; WORLD: {world}; IJK: {p_Ijk}")
-        return p_Ijk[0:3]
 
     def onClickDeepgrow(self, current_point, skip_infer=False):
         print("onClickDeepgrow")
@@ -590,7 +722,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         pointListNode.RemoveAllControlPoints()
         segmentId, segment = self.currentSegment()
         if segment and segmentId:
-            v = self._volumeNode
+            # v = self._volumeNode
+            v = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
             IjkToRasMatrix = vtk.vtkMatrix4x4()
             v.GetIJKToRASMatrix(IjkToRasMatrix)
 
@@ -612,8 +745,9 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.ignorePointListNodeAddEvent = True
         self.onEditControlPoints(self.dgPositivePointListNode, "MONAILabel.ForegroundPoints")
-        # self.onEditControlPoints(self.dgNegativePointListNode, "MONAILabel.BackgroundPoints")
+        self.onEditControlPoints(self.dgNegativePointListNode, "MONAILabel.BackgroundPoints")
         self.ignorePointListNodeAddEvent = False
+
 
     def getControlPointsXYZ(self, pointListNode, name):
         RasToIjkMatrix = vtk.vtkMatrix4x4()
@@ -635,6 +769,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         logging.info(f"{name} => Current control points: {point_set}")
         return point_set
+
 
 
 #
@@ -832,6 +967,19 @@ class EIMedSeg3DLogic(ScriptedLoadableModuleLogic):
         sitk.WriteImage(Mask,origin_path.replace('.nii.gz','_predict.nii.gz'))
         print("预测成功！")
 
+    def get_segment_editor_node(self):
+        # Use the Segment Editor module's parameter node for the embedded segment editor widget.
+        # This ensures that if the user switches to the Segment Editor then the selected
+        # segmentation node, volume node, etc. are the same.
+        segmentEditorSingletonTag = "SegmentEditor"
+        segmentEditorNode = slicer.mrmlScene.GetSingletonNode(segmentEditorSingletonTag, "vtkMRMLSegmentEditorNode")
+        if segmentEditorNode is None:
+            segmentEditorNode = slicer.mrmlScene.CreateNodeByClass("vtkMRMLSegmentEditorNode")
+            segmentEditorNode.UnRegister(None)
+            segmentEditorNode.SetSingletonTag(segmentEditorSingletonTag)
+            segmentEditorNode = slicer.mrmlScene.AddNode(segmentEditorNode)
+        return segmentEditorNode
+
 
 #
 # EIMedSeg3DTest
@@ -900,6 +1048,3 @@ class EIMedSeg3DTest(ScriptedLoadableModuleTest):
         self.assertEqual(outputScalarRange[1], inputScalarRange[1])
 
         self.delayDisplay("Test passed")
-
-
-
