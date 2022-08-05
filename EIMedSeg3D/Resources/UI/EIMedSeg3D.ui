@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>359</width>
-    <height>574</height>
+    <height>610</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
@@ -41,6 +41,24 @@
       <string>Load Scans</string>
      </property>
     </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="prevNextLayout">
+     <item>
+      <widget class="QPushButton" name="prevScanButton">
+       <property name="text">
+        <string>Prev Scan</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="nextScanButton">
+       <property name="text">
+        <string>Next Scan</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
    </item>
    <item>
     <widget class="Line" name="line_4">
@@ -90,20 +108,6 @@
       <enum>Qt::Horizontal</enum>
      </property>
     </widget>
-   </item>
-   <item>
-    <layout class="QHBoxLayout" name="volumeSelectorLayout">
-     <item>
-      <widget class="QLabel" name="volumeSelectorLabel">
-       <property name="text">
-        <string>Choose Volume:</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QComboBox" name="volumeSelector"/>
-     </item>
-    </layout>
    </item>
    <item>
     <widget class="Line" name="line_3">
@@ -233,7 +237,23 @@
     </widget>
    </item>
    <item>
-    <widget class="qMRMLSegmentEditorWidget" name="embeddedSegmentEditorWidget"/>
+    <widget class="qMRMLSegmentEditorWidget" name="embeddedSegmentEditorWidget">
+     <property name="segmentationNodeSelectorVisible">
+      <bool>false</bool>
+     </property>
+     <property name="sourceVolumeNodeSelectorVisible">
+      <bool>false</bool>
+     </property>
+     <property name="masterVolumeNodeSelectorVisible">
+      <bool>false</bool>
+     </property>
+     <property name="switchToSegmentationsButtonVisible">
+      <bool>true</bool>
+     </property>
+     <property name="jumpToSelectedSegmentEnabled">
+      <bool>true</bool>
+     </property>
+    </widget>
    </item>
    <item>
     <spacer name="verticalSpacer">
