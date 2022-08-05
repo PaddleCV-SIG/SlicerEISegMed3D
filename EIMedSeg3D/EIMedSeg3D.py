@@ -221,7 +221,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.turnTo(self._currScanIdx - 1)
 
     def turnTo(self, scanIdx):
-        """Turn to the scanIdxth scan
+        """Turn to the scanIdxth scan, load scan and label
 
         Args:
             scanIdx (int): The index in self._scanPaths to turn to
