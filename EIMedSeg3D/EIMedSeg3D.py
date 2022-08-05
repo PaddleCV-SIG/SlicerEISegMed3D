@@ -176,6 +176,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Buttons
         self.ui.loadModelButton.connect("clicked(bool)", self.loadModelClicked)
+        self.ui.loadScanButton.connect("clicked(bool)", self.loadScans)
 
         # Positive/Negative Point
         self.ui.dgPositiveControlPointPlacementWidget.setMRMLScene(slicer.mrmlScene)
@@ -204,6 +205,9 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # TODO: move to initializeParameterNode
         self.ui.dgPositiveControlPointPlacementWidget.setNodeColor(qt.QColor(0, 255, 0))
         self.ui.dgNegativeControlPointPlacementWidget.setNodeColor(qt.QColor(255, 0, 0))
+
+    def loadScans(self):
+        print(self.ui.dataFolderLineEdit.currentPath)
 
     def getThresh(self):
         return self.ui.threshSlider.value

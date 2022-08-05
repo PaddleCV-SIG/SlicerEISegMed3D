@@ -6,11 +6,49 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>290</width>
-    <height>534</height>
+    <width>359</width>
+    <height>574</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <layout class="QHBoxLayout" name="dataFolderLayout">
+     <item>
+      <widget class="QLabel" name="dataFolderLabel">
+       <property name="text">
+        <string>Data Folder :</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="ctkPathLineEdit" name="dataFolderLineEdit">
+       <property name="label">
+        <string/>
+       </property>
+       <property name="filters">
+        <set>ctkPathLineEdit::AllDirs|ctkPathLineEdit::AllEntries|ctkPathLineEdit::Dirs|ctkPathLineEdit::Drives|ctkPathLineEdit::Executable|ctkPathLineEdit::Files|ctkPathLineEdit::NoDot|ctkPathLineEdit::NoDotDot|ctkPathLineEdit::Readable</set>
+       </property>
+       <property name="options">
+        <set>ctkPathLineEdit::ReadOnly</set>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QPushButton" name="loadScanButton">
+     <property name="text">
+      <string>Load Scans</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="Line" name="line_4">
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
+     </property>
+    </widget>
+   </item>
    <item>
     <layout class="QFormLayout" name="modelLayout">
      <item row="0" column="0">
