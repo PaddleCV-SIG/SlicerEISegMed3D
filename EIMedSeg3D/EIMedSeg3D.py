@@ -212,12 +212,12 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def nextScan(self):
         if self._currScanIdx is None:
-            print("scanIdx is none")
+            self._currScanIdx = 0
         self.turnTo(self._currScanIdx + 1)
 
     def prevScan(self):
         if self._currScanIdx is None:
-            print("scanIdx is none")
+            self._currScanIdx = 0
         self.turnTo(self._currScanIdx - 1)
 
     def turnTo(self, scanIdx):
@@ -345,8 +345,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             dotPos = scanPath.find(".")
             labelPath = scanPath[:dotPos] + "_label" + scanPath[dotPos:]
             self._labelPaths.append(labelPath)
-
-        self.turnTo(0)
+        logging.info("scans loaded")
+        # self.turnTo(0)
 
     def getThresh(self):
         return self.ui.threshSlider.value
