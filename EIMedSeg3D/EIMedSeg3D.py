@@ -201,13 +201,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Segment editor
         self.ui.embeddedSegmentEditorWidget.setMRMLScene(slicer.mrmlScene)
-        # self.ui.embeddedSegmentEditorWidget.setSegmentationNodeSelectorVisible(False)
-        # self.ui.embeddedSegmentEditorWidget.setMasterVolumeNodeSelectorVisible(False)
         self.ui.embeddedSegmentEditorWidget.setMRMLSegmentEditorNode(self.logic.get_segment_editor_node())
-
-        # self.ui.embeddedSegmentEditorWidget.setSegmentationNode(segmentationNode)
-        # self.ui.embeddedSegmentEditorWidget.setMasterVolumeNode(self._volumeNode)
-        # self.ui.embeddedSegmentEditorWidget.setCurrentSegmentID(existing_label_ids[label])
 
         self.initializeParameterNode()
 
@@ -227,39 +221,36 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.turnTo(self._currScanIdx - 1)
 
     def turnTo(self, scanIdx):
+        """Turn to the scanIdxth scan
+
+        Args:
+            scanIdx (int): The index in self._scanPaths to turn to
+        """
+
+        # 0. check param, unload previous scan and segmentation
         if scanIdx < 0:
             print(f"{scanIdx} < 0, no prev scan")
             return
         if scanIdx >= len(self._scanPaths):
             print(f"{scanIdx} >= len(self._scanPaths), no next scan ")
             return
-        
-        # unload previous scan and segmentation
         if self._currVolumeNode is not None:
             slicer.mrmlScene.RemoveNode(self._currVolumeNode)
         if self._segmentNode is not None:
             slicer.mrmlScene.RemoveNode(self._segmentNode)
 
         # 1. load new scan
-        
         self._currVolumeNode = slicer.util.loadVolume(self._scanPaths[scanIdx])
-        self._currVolumeNode.SetName("EIMedSeg3DScan")
 
         # 2. load or create segmentation
-        segmentNodeName = "EIMedSeg3DSegmentation"
-
         if osp.exists(self._scanPaths[scanIdx]):
             self._segmentNode = slicer.modules.segmentations.logic().LoadSegmentationFromFile(
                 self._labelPaths[scanIdx], False
             )
         else:
-            # try:
-            #     segNode = slicer.util.getNode(segmentNodeName)
-            #     slicer.mrmlScene.RemoveNode(segNode)
-            # except slicer.util.MRMLNodeNotFoundException as e:
             self._segmentNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
 
-        self._segmentNode.SetName(segmentNodeName)
+        self._segmentNode.SetName("EIMedSeg3DSegmentation")
         self._segmentNode.SetReferenceImageGeometryParameterFromVolumeNode(self._currVolumeNode)
 
         # 3. create catgs
@@ -278,7 +269,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             segmentation (_type_): _description_
 
         Returns:
-            list: [label value, name, color_r, color_g, color_b] color is 0~255
+            dict: {label_value: { "name": string, "color": [color_r, color_g, color_b] }, ... } (color is 0~255)
         """
         catgs = []
         for segId in segmentation.GetSegmentIDs():
@@ -293,7 +284,14 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         return {c[0]: {"name": c[1], "color": c[2:5]} for c in catgs}
 
     def getCatgFromTxt(self):
+        """Get category info from labelx.txt
+
+        Returns:
+            dict: same as getCatgFromSegmentation
+        """
         txt_path = osp.join(self._dataFolder, "labels.txt")
+        if not osp.exists(txt_path):
+            return {}
         catgs = open(txt_path, "r").readlines()
         catgs = [info.split(" ") for info in catgs]
         for info in catgs:
@@ -302,7 +300,11 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         return {c[0]: {"name": c[1], "color": c[2:5]} for c in catgs}
 
     def catgTxt2Segmentation(self, segmentation):
+        """Sync category information from labels.txt to segmentation
 
+        Args:
+            segmentation (_type_): _description_
+        """
         # 1. get catg info from txt and segmentation
         txt_catgs = self.getCatgFromTxt()
         logging.info(f"txt_catgs: {txt_catgs}")
@@ -324,6 +326,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 segment.SetLabelValue(labelValue)
 
     def loadScans(self):
+        """Get all the scans under a folder and turn to the first one"""
         currPath = self.ui.dataFolderLineEdit.currentPath
         if currPath is None or len(currPath) == 0:
             print("select path first")
