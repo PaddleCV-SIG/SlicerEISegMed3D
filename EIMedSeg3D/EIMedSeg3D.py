@@ -235,26 +235,31 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             return
 
         # 1. unload previous scan, load new scan
-        try:
-            currScanNode = slicer.util.getNode("EIMedSeg3DScan")
-            slicer.mrmlScene.RemoveNode(currScanNode)
-        except slicer.util.MRMLNodeNotFoundException as e:
-            pass
+        # try:
+        #     currScanNode = slicer.util.getNode("EIMedSeg3DScan")
+        #     slicer.mrmlScene.RemoveNode(currScanNode)
+        # except slicer.util.MRMLNodeNotFoundException as e:
+        #     pass
+        if self._currVolumeNode is not None:
+            slicer.mrmlScene.RemoveNode(self._currVolumeNode)
 
         self._currVolumeNode = slicer.util.loadVolume(self._scanPaths[scanIdx])
         self._currVolumeNode.SetName("EIMedSeg3DScan")
 
         # 2. load or create segmentation
         segmentNodeName = "EIMedSeg3DSegmentation"
+        if self._segmentNode is not None:
+            slicer.mrmlScene.RemoveNode(self._segmentNode)
         if osp.exists(self._scanPaths[scanIdx]):
             self._segmentNode = slicer.modules.segmentations.logic().LoadSegmentationFromFile(
                 self._labelPaths[scanIdx], False
             )
         else:
-            try:
-                self._segmentNode = slicer.util.getNode(segmentNodeName)
-            except slicer.util.MRMLNodeNotFoundException as e:
-                self._segmentNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
+            # try:
+            #     segNode = slicer.util.getNode(segmentNodeName)
+            #     slicer.mrmlScene.RemoveNode(segNode)
+            # except slicer.util.MRMLNodeNotFoundException as e:
+            self._segmentNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
 
         self._segmentNode.SetName(segmentNodeName)
         self._segmentNode.SetReferenceImageGeometryParameterFromVolumeNode(self._currVolumeNode)
@@ -329,6 +334,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._dataFolder = osp.dirname(self.ui.dataFolderLineEdit.currentPath)
         paths = os.listdir(self._dataFolder)
         paths = [s for s in paths if s.split(".")[0][-len("_label") :] != "_label"]
+        if "labels.txt" in paths:
+            paths.remove("labels.txt")
         paths.sort()
         paths = [osp.join(self._dataFolder, s) for s in paths]
         self._scanPaths = paths
