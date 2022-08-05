@@ -215,17 +215,17 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # TODO: move to initializeParameterNode
         self.ui.dgPositiveControlPointPlacementWidget.setNodeColor(qt.QColor(0, 255, 0))
         self.ui.dgNegativeControlPointPlacementWidget.setNodeColor(qt.QColor(255, 0, 0))
-    
+
     def nextScan(self):
         if self._currScanIdx is None:
             print("scanIdx is none")
         self.turnTo(self._currScanIdx + 1)
-    
+
     def prevScan(self):
         if self._currScanIdx is None:
             print("scanIdx is none")
         self.turnTo(self._currScanIdx - 1)
-        
+
     def turnTo(self, scanIdx):
         if scanIdx < 0:
             print(f"{scanIdx} < 0, no prev scan")
@@ -233,23 +233,21 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if scanIdx >= len(self._scanPaths):
             print(f"{scanIdx} >= len(self._scanPaths), no next scan ")
             return
-
-        # 1. unload previous scan, load new scan
-        # try:
-        #     currScanNode = slicer.util.getNode("EIMedSeg3DScan")
-        #     slicer.mrmlScene.RemoveNode(currScanNode)
-        # except slicer.util.MRMLNodeNotFoundException as e:
-        #     pass
+        
+        # unload previous scan and segmentation
         if self._currVolumeNode is not None:
             slicer.mrmlScene.RemoveNode(self._currVolumeNode)
+        if self._segmentNode is not None:
+            slicer.mrmlScene.RemoveNode(self._segmentNode)
 
+        # 1. load new scan
+        
         self._currVolumeNode = slicer.util.loadVolume(self._scanPaths[scanIdx])
         self._currVolumeNode.SetName("EIMedSeg3DScan")
 
         # 2. load or create segmentation
         segmentNodeName = "EIMedSeg3DSegmentation"
-        if self._segmentNode is not None:
-            slicer.mrmlScene.RemoveNode(self._segmentNode)
+
         if osp.exists(self._scanPaths[scanIdx]):
             self._segmentNode = slicer.modules.segmentations.logic().LoadSegmentationFromFile(
                 self._labelPaths[scanIdx], False
@@ -347,10 +345,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.turnTo(0)
 
-        # self.loadCategories(osp.join(self._dataFolder, "labels.txt"))
-
-    # def nextScan(self):
-
     def getThresh(self):
         return self.ui.threshSlider.value
 
@@ -385,26 +379,26 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self._endImportProcessing = True
 
-        # get all volumes
-        volumeCollection = slicer.mrmlScene.GetNodesByClass("vtkMRMLScalarVolumeNode")
-        self._allVolumeNodes.clear()
-        for idx in range(volumeCollection.GetNumberOfItems()):
-            self._allVolumeNodes.append(volumeCollection.GetItemAsObject(idx))
+        # # get all volumes
+        # volumeCollection = slicer.mrmlScene.GetNodesByClass("vtkMRMLScalarVolumeNode")
+        # self._allVolumeNodes.clear()
+        # for idx in range(volumeCollection.GetNumberOfItems()):
+        #     self._allVolumeNodes.append(volumeCollection.GetItemAsObject(idx))
 
-        # unset curr volume if not exist
-        names = [v.GetName() for v in self._allVolumeNodes]
-        if self._currVolumeNode is not None and self._currVolumeNode.GetName() not in names:
-            self._currVolumeNode = None
+        # # unset curr volume if not exist
+        # names = [v.GetName() for v in self._allVolumeNodes]
+        # if self._currVolumeNode is not None and self._currVolumeNode.GetName() not in names:
+        #     self._currVolumeNode = None
 
-        # set curr voulme if not set
-        if len(self._allVolumeNodes) != 0 and self._currVolumeNode is None:
-            self._currVolumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
+        # # set curr voulme if not set
+        # if len(self._allVolumeNodes) != 0 and self._currVolumeNode is None:
+        #     self._currVolumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
 
         # update volume selector
         # self.ui.volumeSelector.clear()
         # for v in self._allVolumeNodes:
         #     self.ui.volumeSelector.addItem(v.GetName())
-            # self.ui.volumeSelector.setToolTip(self.current_sample.get("name", "") if self.current_sample else "")
+        # self.ui.volumeSelector.setToolTip(self.current_sample.get("name", "") if self.current_sample else "")
 
         # # set current node in selector and init segment editor
         # if self._currVolumeNode is not None:
@@ -690,7 +684,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # for v in self._allVolumeNodes:
         #     self.ui.volumeSelector.addItem(v.GetName())
-            # self.ui.volumeSelector.setToolTip(self.current_sample.get("name", "") if self.current_sample else "")
+        # self.ui.volumeSelector.setToolTip(self.current_sample.get("name", "") if self.current_sample else "")
 
         # Make sure GUI changes do not call updateParameterNodeFromGUI (it could cause infinite loop)
         self._updatingGUIFromParameterNode = True
