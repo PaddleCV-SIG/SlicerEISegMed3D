@@ -2,17 +2,16 @@ import logging
 import os
 import time
 
-import SimpleITK as sitk
-import sitkUtils
+# import sitkUtils
+import qt
 import vtk
 import numpy as np
 import nibabel as nib
-import qt
 
 import ctk
 import slicer
-import SimpleITK as sitk
-from paddle.inference import create_predictor,Config
+# import SimpleITK as sitk
+# from paddle.inference import create_predictor,Config
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
