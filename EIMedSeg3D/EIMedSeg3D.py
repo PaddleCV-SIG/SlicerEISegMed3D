@@ -19,6 +19,8 @@ from slicer.util import VTKObservationMixin
 
 from paddle.inference import create_predictor, Config
 
+import inference.predictor as predictor
+
 #
 # EIMedSeg3D
 #
@@ -191,7 +193,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Positive/Negative Point
         self.ui.dgPositiveControlPointPlacementWidget.setMRMLScene(slicer.mrmlScene)
         self.ui.dgPositiveControlPointPlacementWidget.placeButton().toolTip = "Select positive points"
-        self.ui.dgPositiveControlPointPlacementWidget.buttonsVisible = False
+        self.ui.dgPositiveControlPointPlacementWidget.buttonsVisible = False # whether to select color
         self.ui.dgPositiveControlPointPlacementWidget.placeButton().show()
 
         self.ui.dgNegativeControlPointPlacementWidget.setMRMLScene(slicer.mrmlScene)
@@ -345,13 +347,23 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             dotPos = scanPath.find(".")
             labelPath = scanPath[:dotPos] + "_label" + scanPath[dotPos:]
             self._labelPaths.append(labelPath)
-        logging.info("scans loaded")
+        logging.info("scans loaded. ", self._scanPaths)
         # self.turnTo(0)
 
     def getThresh(self):
         return self.ui.threshSlider.value
 
     def loadModelClicked(self):
+        device,  enable_mkldnn = "cpu", True
+
+        model_path, param_path = self.ui.modelPathInput.currentPath, self.ui.paramPathInput.currentPath
+        if not model_path or not param_path:
+            model_path = "output_cpu/static_Vnet_model.pdmodel"
+            param_path = "output_cpu/static_Vnet_model.pdiparams"
+
+        predictor_params_ = {'norm_radius': 2, "spatial_scale": 1.0} # 默认和训练一样
+        self.inference_predictor = predictor.BasePredictor(model_path, param_path, device=device, enable_mkldnn=enable_mkldnn, **predictor_params_) 
+        # pass
         # self._segmentNode = slicer.util.getNode("EIMedSeg3DSegmentation")
 
         # self._volumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
@@ -364,17 +376,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # for idx in range(volumeCollection.GetNumberOfItems()):
         #     self._allVolumeNodes.append(volumeCollection.GetItemAsObject(idx))
 
-        # print(dir(slicer.util))
-
-        # print(len(self._allVolumeNodes))
-        # print(self._allVolumeNodes[0])
-        # print(dir(self._allVolumeNodes[0]))
-        # print(self._allVolumeNodes[0].GetImageData())
-        # print((self._allVolumeNodes[0].GetImageData()))
-
         # self._segmentNode = None
         # self.onSceneEndImport(None, None)
-        pass
 
     def onSceneEndImport(self, caller, event):
         if self._endImportProcessing:
@@ -440,15 +443,14 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # maybe run inference here
         with slicer.util.tryWithErrorDisplay("Failed to compute results.", waitCursor=True):
             logging.info(f"Threshold: {self.getThresh()}")
-            # self.ui.progressBar.setValue(33)
-            # time.sleep(1)
-            # self.ui.progressBar.setValue(66)
-            # time.sleep(1)
             self.ui.progressBar.setValue(100)
 
-            # shape = self._currVolumeNode.GetImageData().GetDimensions()
+            shape = self._currVolumeNode.GetImageData().GetDimensions()
+            image_data = self._currVolumeNode.GetImageData()
+            print("image data type: {}, shape: {}", type(image_data), shape)
 
             segmentation = self._segmentNode.GetSegmentation()
+            # replace all 
             segmentId = segmentation.GetSegmentIdBySegmentName("Tissue")
 
             # get current seg mask as numpy
@@ -488,47 +490,47 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # self.onEditControlPoints(self.dgNegativePointListNode, "MONAILabel.BackgroundPoints")
         # self.ignorePointListNodeAddEvent = False
 
-    def getControlPointXYZ(self, pointListNode, index):
-        v = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
-        # v = self._volumeNode
-        RasToIjkMatrix = vtk.vtkMatrix4x4()
-        v.GetRASToIJKMatrix(RasToIjkMatrix)
+    # def getControlPointXYZ(self, pointListNode, index):
+    #     v = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
+    #     # v = self._volumeNode
+    #     RasToIjkMatrix = vtk.vtkMatrix4x4()
+    #     v.GetRASToIJKMatrix(RasToIjkMatrix)
 
-        coord = pointListNode.GetNthControlPointPosition(index)
+    #     coord = pointListNode.GetNthControlPointPosition(index)
 
-        world = [0, 0, 0]
-        pointListNode.GetNthControlPointPositionWorld(index, world)
+    #     world = [0, 0, 0]
+    #     pointListNode.GetNthControlPointPositionWorld(index, world)
 
-        p_Ras = [coord[0], coord[1], coord[2], 1.0]
-        p_Ijk = RasToIjkMatrix.MultiplyDoublePoint(p_Ras)
-        p_Ijk = [round(i) for i in p_Ijk]
+    #     p_Ras = [coord[0], coord[1], coord[2], 1.0]
+    #     p_Ijk = RasToIjkMatrix.MultiplyDoublePoint(p_Ras)
+    #     p_Ijk = [round(i) for i in p_Ijk]
 
-        logging.debug(f"RAS: {coord}; WORLD: {world}; IJK: {p_Ijk}")
-        return p_Ijk[0:3]
+    #     logging.debug(f"RAS: {coord}; WORLD: {world}; IJK: {p_Ijk}")
+    #     return p_Ijk[0:3]
 
-    def getControlPointsXYZ(self, pointListNode, name):
-        v = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
-        # v = self._volumeNode
-        RasToIjkMatrix = vtk.vtkMatrix4x4()
-        v.GetRASToIJKMatrix(RasToIjkMatrix)
+    # def getControlPointsXYZ(self, pointListNode, name):
+    #     v = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
+    #     # v = self._volumeNode
+    #     RasToIjkMatrix = vtk.vtkMatrix4x4()
+    #     v.GetRASToIJKMatrix(RasToIjkMatrix)
 
-        point_set = []
-        n = pointListNode.GetNumberOfControlPoints()
-        for i in range(n):
-            coord = pointListNode.GetNthControlPointPosition(i)
+    #     point_set = []
+    #     n = pointListNode.GetNumberOfControlPoints()
+    #     for i in range(n):
+    #         coord = pointListNode.GetNthControlPointPosition(i)
 
-            world = [0, 0, 0]
-            pointListNode.GetNthControlPointPositionWorld(i, world)
+    #         world = [0, 0, 0]
+    #         pointListNode.GetNthControlPointPositionWorld(i, world)
 
-            p_Ras = [coord[0], coord[1], coord[2], 1.0]
-            p_Ijk = RasToIjkMatrix.MultiplyDoublePoint(p_Ras)
-            p_Ijk = [round(i) for i in p_Ijk]
+    #         p_Ras = [coord[0], coord[1], coord[2], 1.0]
+    #         p_Ijk = RasToIjkMatrix.MultiplyDoublePoint(p_Ras)
+    #         p_Ijk = [round(i) for i in p_Ijk]
 
-            logging.info(f"RAS: {coord}; WORLD: {world}; IJK: {p_Ijk}")
-            point_set.append(p_Ijk[0:3])
+    #         logging.info(f"RAS: {coord}; WORLD: {world}; IJK: {p_Ijk}")
+    #         point_set.append(p_Ijk[0:3])
 
-        logging.info(f"{name} => Current control points: {point_set}")
-        return point_set
+    #     logging.info(f"{name} => Current control points: {point_set}")
+    #     return point_set
 
     def getImageData(self, save=False):
         volumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
@@ -905,6 +907,9 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ignorePointListNodeAddEvent = False
 
     def getControlPointsXYZ(self, pointListNode, name):
+        """
+        load all pointset
+        """
         RasToIjkMatrix = vtk.vtkMatrix4x4()
 
         point_set = []
@@ -924,6 +929,111 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         logging.info(f"{name} => Current control points: {point_set}")
         return point_set
+
+    def infer_image(image_path=None, click_position=None, positive_click=True, pred_thr=0.49,):
+        """
+        image_path: path to the nii image
+        click_position: one or serveral clicks represent by list like: [[234, 284, 7]]
+        positive_click: whether this click is positive or negative
+        """
+        image_path = 'Case59.nii.gz'
+
+        new_shape = (512, 512, 12) # xyz #这个形状与训练的对数据预处理的形状要一致
+        paddle.device.set_device(device)
+
+        if click_position is None:
+            # click_position = [[234, 284, 7, 100], [302, 267, 7, 100], [225, 274, 11, -100]]
+            click_position = [234, 284, 7]
+        if positive_click:
+            click_position[0].append(100)
+        else:
+            click_position[0].append(-100)
+
+        def resampleImage(refer_image, out_size, out_spacing=None, interpolator=sitk.sitkLinear):
+            #根据输出图像，对SimpleITK 的数据进行重新采样。重新设置spacing和shape
+            if out_spacing is None:
+                out_spacing = tuple((refer_image.GetSize() / np.array(out_size)) * refer_image.GetSpacing()) 
+            
+            resampler = sitk.ResampleImageFilter()
+            resampler.SetReferenceImage(refer_image)  
+            resampler.SetSize(out_size)
+            resampler.SetOutputSpacing(out_spacing)
+            resampler.SetTransform(sitk.Transform(3, sitk.sitkIdentity))
+            resampler.SetInterpolator(interpolator)
+            return resampler.Execute(refer_image), out_spacing
+
+        def crop_wwwc(sitkimg, max_v,min_v):
+            #对SimpleITK的数据进行窗宽窗位的裁剪，应与训练前对数据预处理时一致
+            intensityWindow = sitk.IntensityWindowingImageFilter()
+            intensityWindow.SetWindowMaximum(max_v)
+            intensityWindow.SetWindowMinimum(min_v)
+            return intensityWindow.Execute(sitkimg)
+
+        def GetLargestConnectedCompont(binarysitk_image):
+            # 最大连通域提取,binarysitk_image 是掩膜
+            cc = sitk.ConnectedComponent(binarysitk_image)
+            stats = sitk.LabelIntensityStatisticsImageFilter()
+            stats.SetGlobalDefaultNumberOfThreads(8)
+            stats.Execute(cc, binarysitk_image)#根据掩膜计算统计量
+            # stats.
+            maxlabel = 0
+            maxsize = 0
+            for l in stats.GetLabels():#掩膜中存在的标签类别
+                size = stats.GetPhysicalSize(l)
+                if maxsize < size:#只保留最大的标签类别
+                    maxlabel = l
+                    maxsize = size
+            labelmaskimage = sitk.GetArrayFromImage(cc)
+            outmask = labelmaskimage.copy()
+            if len(stats.GetLabels()):
+                outmask[labelmaskimage == maxlabel] = 255
+                outmask[labelmaskimage != maxlabel] = 0
+            return outmask
+            
+        # 预处理
+        origin = sitk.ReadImage(image_path)
+        itk_img_res = crop_wwwc(origin, max_v=2650, min_v=0) # 和预处理文件一致 (512, 512, 12) WHD
+        itk_img_res, new_spacing = resampleImage(itk_img_res, out_size=new_shape)  # 得到重新采样后的图像 origin: (880, 880, 12)
+        npy_img = sitk.GetArrayFromImage(itk_img_res).astype("float32") # 12, 512, 512 DHW
+
+        input_data = np.expand_dims(np.transpose(npy_img, [2, 1, 0]), axis=0)
+        if input_data.max() > 0: # 归一化
+            input_data = input_data / input_data.max()
+        
+        print(f"输入网络前数据的形状:{input_data.shape}") # shape (1, 512, 512, 12)
+    
+        # 根据输入初始化
+        self.inference_predictor.set_input_image(input_data)
+
+        click = clicker.Click(is_positive=click_position[3]>0, coords=c)
+        a = time.time()
+        pred_probs = inference_predictor.get_prediction_noclicker(click)
+        b = time.time()
+        output_data = (pred_probs > pred_thr) * pred_probs #  (12, 512, 512) DHW
+        output_data[output_data>0] = 1
+    
+        x,y,z = c[:3]
+        nei = [(x+1, y, z), (x-1, y, z),(x, y+1, z), (x, y-1, z), (x, y, z-1), (x, y, z+1), (x, y, z)]
+        for n in nei:
+            xx, yy, zz = n
+            if 0<=zz<12:
+                output_data[xx, yy, zz] = i+2
+
+        print(f"预测结果的形状：{output_data.shape}, 预测时间为 {(b-a)*1000} ms") # shape (12, 512, 512) DHW
+        
+        # 加载3d模型预测的mask，由 numpy 转换成SimpleITK格式
+        output_data = np.transpose(output_data, [2, 1, 0])  
+        mask_itk_new = sitk.GetImageFromArray(output_data) # (512, 512, 12) WHD
+        mask_itk_new.SetSpacing(new_spacing)
+        mask_itk_new.SetOrigin(origin.GetOrigin())
+        mask_itk_new.SetDirection(origin.GetDirection())
+        mask_itk_new = sitk.Cast(mask_itk_new, sitk.sitkUInt8)
+        
+        # 暂时没有杂散目标，不需要最大联通域提取
+        Mask, _ = resampleImage(mask_itk_new, origin.GetSize(), origin.GetSpacing(), sitk.sitkNearestNeighbor)
+        Mask.CopyInformation(origin)
+        sitk.WriteImage(Mask, image_path.replace('.nii.gz','_predict_np_sitk_withoutsync.nii.gz'))
+        print("预测成功！save to {}".format(image_path.replace('.nii.gz','_predict_np.nii.gz')))
 
 
 #
@@ -994,136 +1104,6 @@ class EIMedSeg3DLogic(ScriptedLoadableModuleLogic):
 
         stopTime = time.time()
         logging.info(f"Processing completed in {stopTime-startTime:.2f} seconds")
-
-    def infer_image():
-        # GPU下进行预测
-        class Predictor:
-            """
-            用于预测的类
-            """
-
-            def __init__(self, model_path, param_path):
-                self.pred_cfg = Config(model_path, param_path)
-                self.pred_cfg.disable_glog_info()
-                self.pred_cfg.enable_memory_optim()
-                self.pred_cfg.switch_ir_optim(True)
-                self.pred_cfg.enable_use_gpu(100, 0)
-                # self.pred_cfg.disable_gpu()
-                self.predictor = create_predictor(self.pred_cfg)
-
-            def predict(self, data):
-                input_names = self.predictor.get_input_names()
-                input_handle = self.predictor.get_input_handle(input_names[0])
-                output_names = self.predictor.get_output_names()
-                output_handle = self.predictor.get_output_handle(output_names[0])
-                input_handle.reshape(data.shape)
-                input_handle.copy_from_cpu(data)
-                self.predictor.run()
-                result = output_handle.copy_to_cpu()
-                return result
-
-        def resampleImage(sitkimg, new_shape, new_spacing):
-            # 对SimpleITK 的数据进行重新采样。重新设置spacing和shape
-            resampler = sitk.ResampleImageFilter()
-            resampler.SetReferenceImage(sitkimg)
-            resampler.SetOutputSpacing(new_spacing)
-            resampler.SetSize(new_shape)
-            resampler.SetTransform(sitk.Transform(3, sitk.sitkIdentity))
-            resampler.SetInterpolator(sitk.sitkLinear)
-            return resampler.Execute(sitkimg)
-
-        def crop_wwwc(sitkimg, max_v, min_v):
-            # 对SimpleITK的数据进行窗宽窗位的裁剪，应与训练前对数据预处理时一致
-            intensityWindow = sitk.IntensityWindowingImageFilter()
-            intensityWindow.SetWindowMaximum(max_v)
-            intensityWindow.SetWindowMinimum(min_v)
-            return intensityWindow.Execute(sitkimg)
-
-        def GetLargestConnectedCompont(binarysitk_image):
-            # 最大连通域提取,binarysitk_image 是掩膜
-            cc = sitk.ConnectedComponent(binarysitk_image)
-            stats = sitk.LabelIntensityStatisticsImageFilter()
-            stats.SetGlobalDefaultNumberOfThreads(8)
-            stats.Execute(cc, binarysitk_image)  # 根据掩膜计算统计量
-            # stats.
-            maxlabel = 0
-            maxsize = 0
-            for l in stats.GetLabels():  # 掩膜中存在的标签类别
-                size = stats.GetPhysicalSize(l)
-                if maxsize < size:  # 只保留最大的标签类别
-                    maxlabel = l
-                    maxsize = size
-            labelmaskimage = sitk.GetArrayFromImage(cc)
-            outmask = labelmaskimage.copy()
-            if len(stats.GetLabels()):
-                outmask[labelmaskimage == maxlabel] = 255
-                outmask[labelmaskimage != maxlabel] = 0
-            return outmask
-
-        origin_path = "/home/aistudio/test.nii.gz"
-        origin = sitk.ReadImage(origin_path)
-
-        new_shape = (256, 128, 128)  # xyz #这个形状与训练的对数据预处理的形状要一致
-        image_shape = origin.GetSize()
-        spacing = origin.GetSpacing()
-        new_spacing = tuple((image_shape / np.array(new_shape)) * spacing)
-
-        itk_img_res = resampleImage(origin, new_shape, new_spacing)  # 得到重新采样后的图像
-        itk_img_res = crop_wwwc(itk_img_res, max_v=611, min_v=-338)  # 和预处理文件一致
-        npy_img = sitk.GetArrayFromImage(itk_img_res).astype("float32")
-        input_data = np.expand_dims(npy_img, axis=0)
-        if input_data.max() > 0:  # 归一化
-            input_data = input_data / input_data.max()
-        input_data = np.expand_dims(input_data, axis=0)
-        print(f"输入网络前数据的形状:{input_data.shape}")  # shape(1, 1, 128, 128, 256)
-
-        # 创建预测器，加载模型进行预测
-        predictor = Predictor(
-            "/home/aistudio/export_model/model.pdmodel", "/home/aistudio/export_model/model.pdiparams"
-        )
-        output_data = predictor.predict(input_data)
-        print(f"预测结果的形状：{output_data.shape}")  # shape (1, 128, 128, 256)
-
-        # 加载3d模型预测的mask，由numpy 转换成SimpleITK格式
-        data = np.squeeze(output_data)
-        mask_itk_new = sitk.GetImageFromArray(data)
-        mask_itk_new.SetSpacing(new_spacing)
-        mask_itk_new.SetOrigin(origin.GetOrigin())
-        mask_itk_new.SetDirection(origin.GetDirection())
-        mask_itk_new = sitk.Cast(mask_itk_new, sitk.sitkUInt8)
-
-        x, y, z = mask_itk_new.GetSize()
-        mask_array = np.zeros((z, y, x), np.uint8)
-        max_value = np.max(sitk.GetArrayViewFromImage(mask_itk_new))
-        # 对转换成SimpleITK的预测mask进行处理，只保留最大连通域，去除小目标
-        for index in range(1, max_value + 1):
-            sitk_seg = sitk.BinaryThreshold(
-                mask_itk_new, lowerThreshold=index, upperThreshold=index, insideValue=255, outsideValue=0
-            )
-            # step2.形态学开运算
-            BMO = sitk.BinaryMorphologicalOpeningImageFilter()
-            BMO.SetKernelType(sitk.sitkNearestNeighbor)
-            BMO.SetKernelRadius(2)
-            BMO.SetForegroundValue(1)
-            sitk_open = BMO.Execute(sitk_seg != 0)
-            # 提取每个椎体的最大连通域提取，为了去掉小目标
-            sitk_open_array = GetLargestConnectedCompont(sitk_open)
-            mask_array[sitk_open_array == 255] = int(index)
-
-        # 对处理好的预测mask，重采样原始的size 和spacing
-        sitkMask = sitk.GetImageFromArray(mask_array)
-        sitkMask.CopyInformation(mask_itk_new)
-        resampler = sitk.ResampleImageFilter()
-        resampler.SetReferenceImage(sitkMask)  # 需要重新采样的目标图像
-        resampler.SetSize(origin.GetSize())
-        resampler.SetOutputSpacing(origin.GetSpacing())
-        resampler.SetTransform(sitk.Transform(3, sitk.sitkIdentity))
-        resampler.SetInterpolator(sitk.sitkNearestNeighbor)
-
-        Mask = resampler.Execute(sitkMask)  # 得到重新采样后的图像
-        Mask.CopyInformation(origin)
-        sitk.WriteImage(Mask, origin_path.replace(".nii.gz", "_predict.nii.gz"))
-        print("预测成功！")
 
     def get_segment_editor_node(self):
         # Use the Segment Editor module's parameter node for the embedded segment editor widget.
