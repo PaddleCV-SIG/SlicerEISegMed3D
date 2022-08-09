@@ -54,7 +54,7 @@ class BasePredictor(object):
         self.normalization = BatchImageNormalize3D([0.00040428873, ],
                                                    [0.00059983705, ])
 
-        self.transforms.append(SigmoidForPred()) # apply sigmoid after pred
+        self.transforms = [SigmoidForPred()] # apply sigmoid after pred
 
         # !! Todo Set the radius and spatial_scale here
         self.dist_maps = DistMaps3D(
