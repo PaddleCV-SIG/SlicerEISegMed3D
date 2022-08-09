@@ -213,12 +213,16 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def nextScan(self):
         if self._currScanIdx is None:
             self._currScanIdx = 0
-        self.turnTo(self._currScanIdx + 1)
+            self.turnTo(self._currScanIdx)
+        else:
+            self.turnTo(self._currScanIdx + 1)
 
     def prevScan(self):
         if self._currScanIdx is None:
             self._currScanIdx = 0
-        self.turnTo(self._currScanIdx - 1)
+            self.turnTo(self._currScanIdx)
+        else:
+            self.turnTo(self._currScanIdx - 1)
 
     def turnTo(self, scanIdx):
         """Turn to the scanIdxth scan, load scan and label
@@ -229,10 +233,16 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # 0. check param, unload previous scan and segmentation
         if scanIdx < 0:
-            print(f"{scanIdx} < 0, no prev scan")
+            slicer.util.errorDisplay(
+                "There is no previous scan, please click the next scan button first."
+            )
+            # print(f"{scanIdx} < 0, no prev scan")
             return
         if scanIdx >= len(self._scanPaths):
-            print(f"{scanIdx} >= len(self._scanPaths), no next scan ")
+            slicer.util.errorDisplay(
+                "You have marked all the data, and there is no next scan. Please reselect the file path and click the Load Scans button"
+            )
+            # print(f"{scanIdx} >= len(self._scanPaths), no next scan ")
             return
         if self._currVolumeNode is not None:
             slicer.mrmlScene.RemoveNode(self._currVolumeNode)
@@ -243,7 +253,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._currVolumeNode = slicer.util.loadVolume(self._scanPaths[scanIdx])
 
         # 2. load or create segmentation
-        if osp.exists(self._scanPaths[scanIdx]):
+        # todo if osp.exists(self._scanPaths[scanIdx]):
+        if osp.exists(self._labelPaths[scanIdx]):
             self._segmentNode = slicer.modules.segmentations.logic().LoadSegmentationFromFile(
                 self._labelPaths[scanIdx], False
             )
@@ -269,7 +280,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             segmentation (_type_): _description_
 
         Returns:
-            dict: {label_value: { "name": string, "color": [color_r, color_g, color_b] }, ... } (color is 0~255)
+            dict: {label_va
+            lue: { "name": string, "color": [color_r, color_g, color_b] }, ... } (color is 0~255)
         """
         catgs = []
         for segId in segmentation.GetSegmentIDs():
@@ -339,14 +351,51 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             paths.remove("labels.txt")
         paths.sort()
         paths = [osp.join(self._dataFolder, s) for s in paths]
+        file_suffix = [".nii"]
+        paths = [path for path in paths if osp.splitext(path)[-1] in file_suffix]
         self._scanPaths = paths
         self._labelPaths = []
         for scanPath in self._scanPaths:
             dotPos = scanPath.find(".")
             labelPath = scanPath[:dotPos] + "_label" + scanPath[dotPos:]
             self._labelPaths.append(labelPath)
+
+        print(self._scanPaths)
         logging.info("scans loaded")
         # self.turnTo(0)
+
+    def loadVolumeNodeFromPaths(self, currentLoadIndex):
+        """Load VolumeNode from scanPaths
+
+        Args:
+            currentLoadIndex: Index corresponding to the currently loaded file path
+        """
+
+
+        pass
+
+    def saveCatg2Txt(self, segmentation):
+        """Save category info to labelx.txt
+
+        Args:
+            segmentation (_type_): _description_
+        """
+        txt_path = osp.join(self._dataFolder, "labels.txt")
+        catgs = []
+        for segId in segmentation.GetSegmentIDs():
+            segment = segmentation.GetSegment(segId)
+            catgs.append(
+                [
+                    segment.GetLabelValue(),
+                    segment.GetName(),
+                    *[int(v * 255) for v in segment.GetColor()],
+                ]
+            )
+        with open(txt_path, 'w', encoding='utf-8') as f:
+            for c in catgs:
+                temp = ' '.join(map(lambda x: str(x), c))
+                f.write(temp + '\n')
+        logging.info("Annotation information saved successfully.")
 
     def getThresh(self):
         return self.ui.threshSlider.value
