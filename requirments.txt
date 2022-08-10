@@ -1,0 +1,5 @@
+nibabel
+SimpleITK
+numpy
+tqdm
+paddleseg
