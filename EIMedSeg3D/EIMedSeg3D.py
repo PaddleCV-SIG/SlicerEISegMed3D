@@ -228,6 +228,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.initializeSegmentEditor()
 
 
+
     def nextScan(self):
         if self._currScanIdx is None:
             if osp.exists(osp.join(self._dataFolder, "currScanIdx.txt")):
@@ -294,6 +295,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         segmentation = self._segmentNode.GetSegmentation()
         self.updateSegmentation(segmentation)
 
+        # self.ui.embeddedSegmentEditorWidget.setSegmentationNode(self._segmentNode)
         self.ui.embeddedSegmentEditorWidget.setMasterVolumeNode(self._currVolumeNode)
 
         self._currScanIdx = scanIdx
@@ -312,6 +314,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             segment = segmentation.GetSegment(segId)
             catgs.append(
                 [
+                    # segment.GetLabelValue(),
                     # self._segmentEditor[segId].value,
                     int(segId.split('_')[-1]),
                     segment.GetName(),
@@ -360,8 +363,10 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # 3. sync settings from txt
         for segIdx in segmentation.GetSegmentIDs():
             segment = segmentation.GetSegment(segIdx)
+            # labelValue = segment.GetLabelValue()
             labelValue = int(segIdx.split('_')[-1])
             if labelValue in txt_catgs.keys():
+                # segment.SetColor(txt_catgs[labelValue]["color"])
                 segment.SetColor(tuple([round(item, 6) for item in np.divide(txt_catgs[labelValue]["color"], 255)]))
                 segment.SetName(txt_catgs[labelValue]["name"])
                 segment.SetLabelValue(labelValue)
@@ -373,26 +378,32 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             # 1. get catg info from labels.txt if it exists
             txt_catgs = self.getCatgFromTxt(txtPath=labelsPath)
             logging.info(f"txt_catgs: {txt_catgs}")
+            if len(txt_catgs) == 0:
+                demo = ["1", "Tissue", "255", "0", "0"]
+                f1 = open(labelsPath, 'w')
+                f1.write(' '.join(demo))
+        else:
+            demo = ["1", "Tissue", "255", "0", "0"]
+            f1 = open(labelsPath, 'w')
+            f1.write(' '.join(demo))
 
-            self._segmentNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
-            self._segmentNode.SetName("EIMedSeg3DSegmentation")
-            self._segmentNode.SetReferenceImageGeometryParameterFromVolumeNode(self._currVolumeNode)
+        self._segmentNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
+        self._segmentNode.SetName("EIMedSeg3DSegmentation")
+        self._segmentNode.SetReferenceImageGeometryParameterFromVolumeNode(self._currVolumeNode)
 
-            # Sync category information from labels.txt to segmentation
-            segmentation = self._segmentNode.GetSegmentation()
-            self.catgTxt2Segmentation(segmentation, txtPath=labelsPath)
-
-            # Sync segmentation information from segmentation to self._segmentEditor
-            for segId in segmentation.GetSegmentIDs():
-                value = int(segId.split('_')[-1])
-                segment = segmentation.GetSegment(segId)
-                name = segment.GetName()
-                color = [int(v * 255) for v in segment.GetColor()]
-                labelNode = LabelNode(segId, value, name, color)
-                self._segmentEditor[segId] = labelNode
-
-            # Display the content in the segmentation to the segment editor
-            self.ui.embeddedSegmentEditorWidget.setSegmentationNode(self._segmentNode)
+        # Sync category information from labels.txt to segmentation
+        segmentation = self._segmentNode.GetSegmentation()
+        self.catgTxt2Segmentation(segmentation, txtPath=labelsPath)
+        # Sync segmentation information from segmentation to self._segmentEditor
+        for segId in segmentation.GetSegmentIDs():
+            value = int(segId.split('_')[-1])
+            segment = segmentation.GetSegment(segId)
+            name = segment.GetName()
+            color = [int(v * 255) for v in segment.GetColor()]
+            labelNode = LabelNode(segId, value, name, color)
+            self._segmentEditor[segId] = labelNode
+        # Display the content in the segmentation to the segment editor
+        self.ui.embeddedSegmentEditorWidget.setSegmentationNode(self._segmentNode)
 
         pass
 
@@ -430,9 +441,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             if labelValue in old_catgs.keys():
                 segment.SetColor(tuple([round(item, 6) for item in np.divide(old_catgs[labelValue]["color"], 255)]))
                 segment.SetName(old_catgs[labelValue]["name"])
-
-        # print("segmentation: ", segmentation)
-        # print("segmentation.GetSegmentIDs(): ", segmentation.GetSegmentIDs())
         pass
 
     def loadScans(self):
@@ -498,6 +506,17 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         logging.info(f"{labelPath.split('/')[-1]} save successfully")
 
+
+    def loadVolumeNodeFromPaths(self, currentLoadIndex):
+        """Load VolumeNode from scanPaths
+
+        Args:
+            currentLoadIndex: Index corresponding to the currently loaded file path
+        """
+
+
+        pass
+
     def saveCatg2Txt(self, segmentation):
         """Save category info to labelx.txt
 
@@ -533,7 +552,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     *self._segmentEditor[segId].color
                 ]
             )
-        print("catgs: ", catgs)
         with open(txt_path, 'w', encoding='utf-8') as f:
             for c in catgs:
                 temp = ' '.join(map(lambda x: str(x), c))
@@ -658,19 +676,14 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             name = ["Tissue", "lang", "organ"]
             segmentId_list = []
             segmentation = self._segmentNode.GetSegmentation()
+
             for item in name:
                 segmentId_list.append(segmentation.GetSegmentIdBySegmentName(item))
-            segmentId = segmentation.GetSegmentIdBySegmentName("Tissue")
 
-            LabelValue_lis = []
-            for segId in segmentation.GetSegmentIDs():
-                segment = segmentation.GetSegment(segId)
-                LabelValue_lis.append(segment.GetLabelValue())
+            segmentId = segmentation.GetSegmentIdBySegmentName("Tissue")
 
             # get current seg mask as numpy
             res = slicer.util.arrayFromSegmentBinaryLabelmap(self._segmentNode, segmentId, self._currVolumeNode)
-
-            lis = np.unique(res)
 
             # add new
             p = newPointPos
@@ -679,6 +692,26 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
             # set new numpy mask to segmentation
             slicer.util.updateSegmentBinaryLabelmapFromArray(res, self._segmentNode, segmentId, self._currVolumeNode)
+
+            # segmentId = segmentation.GetSegmentIdBySegmentName("Tissue")
+            # self.ui.embeddedSegmentEditorWidget.setCurrentSegmentID(segmentId)
+            # effect = self.ui.embeddedSegmentEditorWidget.effectByName("Paint")
+            # effect.setParameter("BrushSphere", True)
+            # selectedSegmentLabelmap = effect.selectedSegmentLabelmap()
+
+            # img =
+            # nib_img = nib.Nifti1Image(data, np.eye(4))
+            # nib.save(nib_img, "/home/lin/Desktop/test.nii.gz")
+
+            # labelImage = sitk.ReadImage(in_file)
+            # labelmapVolumeNode = sitkUtils.PushVolumeToSlicer(labelImage, None, className="vtkMRMLLabelMapVolumeNode")
+
+            # newLabelmap = slicer.vtkOrientedImageData()
+            # self._segmentNode.GetBinaryLabelmapRepresentation(segmentId, newLabelmap)
+
+            # effect.modifySelectedSegmentByLabelmap(
+            #     newLabelmap, slicer.qSlicerSegmentEditorAbstractEffect.ModificationModeAdd
+            # )
 
         self.ignorePointListNodeAddEvent = False
 
