@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>359</width>
-    <height>610</height>
+    <width>375</width>
+    <height>652</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
@@ -237,11 +237,15 @@
     </widget>
    </item>
    <item>
+    <widget class="QPushButton" name="submitLabelButton">
+     <property name="text">
+      <string>Submit Label</string>
+     </property>
+    </widget>
+   </item>
+   <item>
     <widget class="qMRMLSegmentEditorWidget" name="embeddedSegmentEditorWidget">
      <property name="segmentationNodeSelectorVisible">
-      <bool>false</bool>
-     </property>
-     <property name="sourceVolumeNodeSelectorVisible">
       <bool>false</bool>
      </property>
      <property name="masterVolumeNodeSelectorVisible">
@@ -252,6 +256,9 @@
      </property>
      <property name="jumpToSelectedSegmentEnabled">
       <bool>true</bool>
+     </property>
+     <property name="sourceVolumeNodeSelectorVisible" stdset="0">
+      <bool>false</bool>
      </property>
     </widget>
    </item>
