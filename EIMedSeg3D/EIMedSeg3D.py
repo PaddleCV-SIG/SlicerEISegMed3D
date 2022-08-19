@@ -57,18 +57,13 @@ and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR0132
 
     def initializeAfterStartup(self):
         print("initializeAfterStartup", slicer.app.commandOptions().noMainWindow)
-        if not slicer.app.commandOptions().noMainWindow:
-            print("in")
-            # print("here")
-            # self.settingsPanel = MONAILabelSettingsPanel()
-            # slicer.app.settingsDialog().addPanel("MONAI Label", self.settingsPanel)
+        # if not slicer.app.commandOptions().noMainWindow:
+        # print("in")
 
 
 #
 # Register sample data sets in Sample Data module
 #
-
-
 def registerSampleData():
     """
     Add data sets to Sample Data module.
@@ -151,6 +146,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.dgNegativePointListNode = None
         self.dgNegativePointListNodeObservers = []
         self.ignorePointListNodeAddEvent = False
+        self.init_params()
 
     def setup(self):
         """
@@ -182,8 +178,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # These connections ensure that whenever user changes some settings on the GUI, that is saved in the MRML scene
         # (in the selected parameter node).
-        # self.ui.volumeSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
-        self.ui.threshSlider.connect("valueChanged(double)", self.updateParameterNodeFromGUI)
+        self.ui.threshSlider.connect("valueChanged(double)", self.set_segmentation_opacity)
         # TODO: sync select two paths to scene?
 
         # Buttons
@@ -206,6 +201,9 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Segment editor
         self.ui.embeddedSegmentEditorWidget.setMRMLScene(slicer.mrmlScene)
         self.ui.embeddedSegmentEditorWidget.setMRMLSegmentEditorNode(self.logic.get_segment_editor_node())
+        # segmentEditorWidget = slicer.modules.segmenteditor.widgetRepresentation().self().editor
+        # segmentEditorWidget.setEffectNameOrder(["Paint", "Erase"])
+        # segmentEditorWidget.unorderedEffectsVisible = False
 
         self.initializeParameterNode()
 
@@ -213,6 +211,61 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # TODO: move to initializeParameterNode
         self.ui.dgPositiveControlPointPlacementWidget.setNodeColor(qt.QColor(0, 255, 0))
         self.ui.dgNegativeControlPointPlacementWidget.setNodeColor(qt.QColor(255, 0, 0))
+
+    def init_params(self):
+        "init changble parameters here"
+        self.predictor_params_ = {"norm_radius": 2, "spatial_scale": 1.0}
+        self.ratio = (512 / 880, 512 / 880, 12 / 12)  # xyz 这个形状与训练的对数据预处理的形状要一致，怎么切换不同模型？ todo： 在模块上设置预处理形状。和模型一致
+        self.train_shape = (512, 512, 12)
+        self.image_ww = (0, 2650)  # low, high range for image crop
+        self.test_iou = False  # the label file need to be set correctly
+        self.file_suffix = [".nii"]  # files with these suffix will be loaded
+        self.device, self.enable_mkldnn = "gpu", True
+
+    def loadModelClicked(self):
+        model_path, param_path = self.ui.modelPathInput.currentPath, self.ui.paramPathInput.currentPath
+        if not model_path or not param_path:
+            slicer.util.errorDisplay("Please set the model_path and parameter path before load model.")
+            return
+
+        self.inference_predictor = predictor.BasePredictor(
+            model_path, param_path, device=self.device, enable_mkldnn=self.enable_mkldnn, **self.predictor_params_
+        )
+
+        slicer.util.delayDisplay("Sucessfully loaded model to {}!".format(self.device), autoCloseMsec=1500)
+
+    def loadScans(self):
+        """Get all the scans under a folder and turn to the first one"""
+        currPath = self.ui.dataFolderLineEdit.currentPath
+        if currPath is None or len(currPath) == 0:
+            # test remove
+            currPath = os.path.join(os.path.dirname(os.path.realpath(__file__)), os.path.join("test_MR", "Case2.nii"))
+            slicer.util.delayDisplay("Please set data path in Data Folder", autoCloseMsec=1200)
+            # return
+
+        self.clearScene()
+
+        # list files in assigned directory
+        self._dataFolder = osp.dirname(currPath)
+        paths = os.listdir(self._dataFolder)
+        paths = sorted([s for s in paths if s.split(".")[0][-len("_label") :] != "_label"])
+        paths = [osp.join(self._dataFolder, s) for s in paths]
+
+        self._scanPaths = [path for path in paths if osp.splitext(path)[-1] in self.file_suffix]
+
+        slicer.util.delayDisplay(
+            "Successfully loaded {} scans! \nPlease press on next scan to show them!".format(len(self._scanPaths)),
+            autoCloseMsec=1200,
+        )
+
+        # test
+        print(self._scanPaths)
+
+    def clearScene(self):
+        if self._currVolumeNode is not None:
+            slicer.mrmlScene.RemoveNode(self._currVolumeNode)
+        if self._segmentNode is not None:
+            slicer.mrmlScene.RemoveNode(self._segmentNode)
 
     def nextScan(self):
         if self._currScanIdx is None:
@@ -238,39 +291,90 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # 0. check param, unload previous scan and segmentation
         if scanIdx < 0:
             slicer.util.errorDisplay("There is no previous scan, please click the next scan button first.")
-            # print(f"{scanIdx} < 0, no prev scan")
             return
+
         if scanIdx >= len(self._scanPaths):
             slicer.util.errorDisplay(
                 "You have marked all the data, and there is no next scan. Please reselect the file path and click the Load Scans button"
             )
-            # print(f"{scanIdx} >= len(self._scanPaths), no next scan ")
             return
-        self.clearScene()
 
-        # 1. load new scan
-        self._currVolumeNode = slicer.util.loadVolume(self._scanPaths[scanIdx])
+        self.clearScene()  # 切图时就clear所有当前volume node 和 segmentation node
+
+        self._currScanIdx = scanIdx
+
+        # 1. load new scan & preprocess
+        image_path = self._scanPaths[self._currScanIdx]
+        self._currVolumeNode = slicer.util.loadVolume(image_path)
+        self._currLabelPath = image_path.replace(".nii", "_label.nii")
+
+        self.origin = sitk.ReadImage(image_path)
+        itk_img_res = inference.crop_wwwc(
+            self.origin, max_v=self.image_ww[1], min_v=self.image_ww[0]
+        )  # 和预处理文件一致 (512, 512, 12) WHD
+        itk_img_res, self.new_spacing = inference.resampleImage(
+            itk_img_res, out_size=self.train_shape
+        )  # 得到重新采样后的图像 origin: (880, 880, 12)
+
+        npy_img = sitk.GetArrayFromImage(itk_img_res).astype("float32")  # 12, 512, 512 DHW
+
+        input_data = np.expand_dims(np.transpose(npy_img, [2, 1, 0]), axis=0)
+        if input_data.max() > 0:  # 归一化
+            input_data = input_data / input_data.max()
+
+        print(f"输入网络前数据的形状:{input_data.shape}")  # shape (1, 512, 512, 12)
+
+        try:
+            self.inference_predictor.set_input_image(input_data)
+        except AttributeError:
+            slicer.util.delayDisplay("Please load model first", autoCloseMsec=1200)
 
         # 2. load or create segmentation
         # todo if osp.exists(self._scanPaths[scanIdx]):
-        if osp.exists(self._labelPaths[scanIdx]):
+        if osp.exists(self._currLabelPath):
             self._segmentNode = slicer.modules.segmentations.logic().LoadSegmentationFromFile(
-                self._labelPaths[scanIdx], False
+                self._currLabelPath, False
             )
         else:
-            self._segmentNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
+            self._segmentNode = slicer.mrmlScene.AddNewNodeByClass(
+                "vtkMRMLSegmentationNode"
+            )  # Add segment node and segmentation
 
         self._segmentNode.SetName("EIMedSeg3DSegmentation")
         self._segmentNode.SetReferenceImageGeometryParameterFromVolumeNode(self._currVolumeNode)
 
-        # 3. create catgs
-        segmentation = self._segmentNode.GetSegmentation()
-        self.catgTxt2Segmentation(segmentation)
+        # 3. create category label from txt and segmentation
+        self.catgTxt2Segmentation(self._segmentNode.GetSegmentation())
 
+        # 4. set the editor as current result.
         self.ui.embeddedSegmentEditorWidget.setSegmentationNode(self._segmentNode)
         self.ui.embeddedSegmentEditorWidget.setMasterVolumeNode(self._currVolumeNode)
 
-        self._currScanIdx = scanIdx
+    def catgTxt2Segmentation(self, segmentation):
+        """Sync category information from labels.txt to segmentation
+
+        Args:
+            segmentation (_type_): _description_
+        """
+        # 1. get catg info from txt and segmentation
+        txt_catgs = self.getCatgFromTxt()
+        logging.info(f"txt_catgs: {txt_catgs}")  # revise data structure
+
+        curr_catgs = self.getCatgFromSegmentation(segmentation)
+        logging.info(f"curr_catgs: {curr_catgs}")
+
+        # 2. create and modify info in segmentation # todo 实现segmentation 和txt的同步，那么editor的有没有同步过来？
+        for labelValue in set(txt_catgs.keys()) - set(curr_catgs.keys()):
+            segmentation.AddEmptySegment("", txt_catgs[labelValue]["name"], txt_catgs[labelValue]["color"])
+
+        # 3. sync settings from txt
+        for segIdx in segmentation.GetSegmentIDs():
+            segment = segmentation.GetSegment(segIdx)
+            labelValue = segment.GetLabelValue()
+            if labelValue in txt_catgs.keys():
+                segment.SetColor(txt_catgs[labelValue]["color"])
+                segment.SetName(txt_catgs[labelValue]["name"])
+                segment.SetLabelValue(labelValue)
 
     def getCatgFromSegmentation(self, segmentation):
         """Get category info from a segmentation
@@ -312,203 +416,23 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         return {c[0]: {"name": c[1], "color": c[2:5]} for c in catgs}
 
-    def catgTxt2Segmentation(self, segmentation):
-        """Sync category information from labels.txt to segmentation
-
-        Args:
-            segmentation (_type_): _description_
-        """
-        # 1. get catg info from txt and segmentation
-        txt_catgs = self.getCatgFromTxt()
-        logging.info(f"txt_catgs: {txt_catgs}")
-
-        curr_catgs = self.getCatgFromSegmentation(segmentation)
-        logging.info(f"curr_catgs: {curr_catgs}")
-
-        # 2. create and modify info in segmentation
-        for labelValue in set(txt_catgs.keys()) - set(curr_catgs.keys()):
-            segmentation.AddEmptySegment("", txt_catgs[labelValue]["name"], txt_catgs[labelValue]["color"])
-
-        # 3. sync settings from txt
-        for segIdx in segmentation.GetSegmentIDs():
-            segment = segmentation.GetSegment(segIdx)
-            labelValue = segment.GetLabelValue()
-            if labelValue in txt_catgs.keys():
-                segment.SetColor(txt_catgs[labelValue]["color"])
-                segment.SetName(txt_catgs[labelValue]["name"])
-                segment.SetLabelValue(labelValue)
-
-    def clearScene(self):
-        if self._currVolumeNode is not None:
-            slicer.mrmlScene.RemoveNode(self._currVolumeNode)
-        if self._segmentNode is not None:
-            slicer.mrmlScene.RemoveNode(self._segmentNode)
-
-    def loadScans(self):
-        """Get all the scans under a folder and turn to the first one"""
-        currPath = self.ui.dataFolderLineEdit.currentPath
-        if currPath is None or len(currPath) == 0:
-            # test
-            currPath = "/Users/tangshiyu/Documents/MedicalDoc/Datasets/3D/mri_train/test_MR/Case2.nii"
-            print("select path first")
-            # return
-        self.clearScene
-
-        self._dataFolder = osp.dirname(currPath)
-        paths = os.listdir(self._dataFolder)
-        paths = [s for s in paths if s.split(".")[0][-len("_label") :] != "_label"]
-        # if "labels.txt" in paths:
-        #     paths.remove("labels.txt")
-        paths.sort()
-        paths = [osp.join(self._dataFolder, s) for s in paths]
-        file_suffix = [".nii"]
-        paths = [path for path in paths if osp.splitext(path)[-1] in file_suffix]
-        self._scanPaths = paths
-        self._labelPaths = []
-        for scanPath in self._scanPaths:
-            dotPos = scanPath.find(".")
-            labelPath = scanPath[:dotPos] + "_label" + scanPath[dotPos:]
-            self._labelPaths.append(labelPath)
-        # logging.info("scans loaded.")
-        slicer.util.delayDisplay(
-            "Successfully loaded {} scans! \nPlease press on next scan to show them!".format(len(self._scanPaths)),
-            autoCloseMsec=1500,
-        )
-        # test
-        print(self._scanPaths)
-        # self.turnTo(0)
-
-    def loadVolumeNodeFromPaths(self, currentLoadIndex):
-        """Load VolumeNode from scanPaths
-
-        Args:
-            currentLoadIndex: Index corresponding to the currently loaded file path
-        """
-
-        pass
-
-    def saveCatg2Txt(self, segmentation):
-        """Save category info to labelx.txt
-
-        Args:
-            segmentation (_type_): _description_
-        """
-        txt_path = osp.join(self._dataFolder, "labels.txt")
-        catgs = []
-        for segId in segmentation.GetSegmentIDs():
-            segment = segmentation.GetSegment(segId)
-            catgs.append(
-                [
-                    segment.GetLabelValue(),
-                    segment.GetName(),
-                    *[int(v * 255) for v in segment.GetColor()],
-                ]
-            )
-        with open(txt_path, "w", encoding="utf-8") as f:
-            for c in catgs:
-                temp = " ".join(map(lambda x: str(x), c))
-                f.write(temp + "\n")
-        logging.info("Annotation information saved successfully.")
-
-    def getThresh(self):
-        return self.ui.threshSlider.value
-
-    def loadModelClicked(self):
-        self.device, enable_mkldnn = "cpu", False
-
-        model_path, param_path = self.ui.modelPathInput.currentPath, self.ui.paramPathInput.currentPath
-        if not model_path or not param_path:
-            # model_path = "output_cpu/static_Vnet_model.pdmodel"
-            # param_path = "output_cpu/static_Vnet_model.pdiparams"
-            model_path = (
-                "/Users/tangshiyu/baidu/slicer extensions/SlicerEISeg/EIMedSeg3D/output_cpu/static_Vnet_model.pdmodel"
-            )
-            param_path = (
-                "/Users/tangshiyu/baidu/slicer extensions/SlicerEISeg/EIMedSeg3D/output_cpu/static_Vnet_model.pdiparams"
-            )
-
-        predictor_params_ = {"norm_radius": 2, "spatial_scale": 1.0}  # 默认和训练一样
-        self.inference_predictor = predictor.BasePredictor(
-            model_path, param_path, device=self.device, enable_mkldnn=enable_mkldnn, **predictor_params_
-        )
-        slicer.util.delayDisplay("Sucessfully loaded model!", autoCloseMsec=1500)
-
-        # pass
-
-    def onSceneEndImport(self, caller, event):
-        if self._endImportProcessing:
-            return
-
-        self._endImportProcessing = True
-
-        # # get all volumes
-        # volumeCollection = slicer.mrmlScene.GetNodesByClass("vtkMRMLScalarVolumeNode")
-        # self._allVolumeNodes.clear()
-        # for idx in range(volumeCollection.GetNumberOfItems()):
-        #     self._allVolumeNodes.append(volumeCollection.GetItemAsObject(idx))
-
-        # # unset curr volume if not exist
-        # names = [v.GetName() for v in self._allVolumeNodes]
-        # if self._currVolumeNode is not None and self._currVolumeNode.GetName() not in names:
-        #     self._currVolumeNode = None
-
-        # # set curr voulme if not set
-        # if len(self._allVolumeNodes) != 0 and self._currVolumeNode is None:
-        #     self._currVolumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
-
-        # update volume selector
-        # self.ui.volumeSelector.clear()
-        # for v in self._allVolumeNodes:
-        #     self.ui.volumeSelector.addItem(v.GetName())
-        # self.ui.volumeSelector.setToolTip(self.current_sample.get("name", "") if self.current_sample else "")
-
-        # # set current node in selector and init segment editor
-        # if self._currVolumeNode is not None:
-        #     self.ui.volumeSelector.setCurrentIndex(self.ui.volumeSelector.findText(self._currVolumeNode.GetName()))
-
-        #     if self._segmentNode is None:
-        #         name = "segmentation_" + self._currVolumeNode.GetName()
-        #         self._segmentNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
-        #         self._segmentNode.SetReferenceImageGeometryParameterFromVolumeNode(self._currVolumeNode)
-        #         self._segmentNode.SetName(name)
-
-        #         segmentation = self._segmentNode.GetSegmentation()
-        #         segmentation.AddEmptySegment("Tissue", "Tissue", [0, 0, 1.0])
-
-        #     self.ui.embeddedSegmentEditorWidget.setSegmentationNode(self._segmentNode)
-        #     self.ui.embeddedSegmentEditorWidget.setMasterVolumeNode(self._currVolumeNode)
-
-        #     # self.ui.embeddedSegmentEditorWidget.setCurrentSegmentID
-
-        self._endImportProcessing = False
-        # if not self._allVolumeNodes:
-        #     self.updateGUIFromParameterNode()
-
     def onControlPointAdded(self, observer, eventid):
-        print("=====")
         posPoints = self.getControlPointsXYZ(self.dgPositivePointListNode, "positive")
         negPoints = self.getControlPointsXYZ(self.dgNegativePointListNode, "negative")
 
         newPointIndex = observer.GetDisplayNode().GetActiveControlPoint()
         newPointPos = self.getControlPointXYZ(observer, newPointIndex)
         isPositivePoint = False if len(posPoints) == 0 else newPointPos == posPoints[-1]
-        # logging.info(f"New point: {newPointPos}, is positive: {isPositivePoint}")
+
         slicer.util.delayDisplay(
-            "A {} point have been added on {}".format(["positive", "negative"][isPositivePoint], newPointPos),
-            autoCloseMsec=1500,
+            "A {} point have been added on {}".format(["negative", "positive"][isPositivePoint], newPointPos),
+            autoCloseMsec=1200,
         )
 
         self.ignorePointListNodeAddEvent = True
 
         # maybe run inference here
         with slicer.util.tryWithErrorDisplay("Failed to compute results.", waitCursor=True):
-            logging.info(f"Threshold: {self.getThresh()}")
-            self.ui.progressBar.setValue(100)
-
-            shape = self._currVolumeNode.GetImageData().GetDimensions()
-            image_data = self._currVolumeNode.GetImageData()
-            print("image data type: {}, shape: {}", type(image_data), shape)
-
             segmentation = self._segmentNode.GetSegmentation()
             segmentId = segmentation.GetSegmentIdBySegmentName(
                 "Tissue"
@@ -516,120 +440,30 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
             # get current seg mask as numpy
             res = slicer.util.arrayFromSegmentBinaryLabelmap(self._segmentNode, segmentId, self._currVolumeNode)
-            print("numpy array shape", res.shape)
-            # mask = self.infer_image() # test
-            mask = self.infer_image(self._scanPaths[self._currScanIdx], newPointPos, isPositivePoint)
-            print("mask shape", mask.shape)
-            # add new
+            self.ui.progressBar.setValue(10)
+
+            # test
             p = newPointPos
             p = [p[2], p[1], p[0]]
             res[p[0] - 10 : p[0] + 10, p[1] - 10 : p[1] + 10, p[2] - 10 : p[2] + 10] = 1
+            mask = res
+            # !! predict image for test
+            # mask = self.infer_image(newPointPos, isPositivePoint) # (880, 880, 12) same as res
+            self.ui.progressBar.setValue(100)
+
+            if self.test_iou:
+                label = sitk.ReadImage(self._currLabelPath)
+                label = sitk.GetArrayFromImage(label).astype("int32")
+                iou = self.get_iou(label, mask)
+                print("Current IOU is {}".format(iou))
 
             # set new numpy mask to segmentation
-            slicer.util.updateSegmentBinaryLabelmapFromArray(res, self._segmentNode, segmentId, self._currVolumeNode)
+            slicer.util.updateSegmentBinaryLabelmapFromArray(mask, self._segmentNode, segmentId, self._currVolumeNode)
 
         self.ignorePointListNodeAddEvent = False
 
-    def infer_image(self, image_path=None, click_position=None, positive_click=True, pred_thr=0.49, new_shape=None):
-        """
-        image_path: path to the nii image
-        click_position: one or serveral clicks represent by list like: [[234, 284, 7]]
-        positive_click: whether this click is positive or negative
-        """
-        try:
-            paddle.device.set_device(self.device)
-        except AttributeError:
-            slicer.util.errorDisplay("The model is not loaded, Please press load model first")
-            return
-
-        # test_default
-        if image_path is None:
-            image_path = "Case59.nii.gz"
-        if click_position is None:
-            # click_position = [[234, 284, 7, 100], [302, 267, 7, 100], [225, 274, 11, -100]]
-            click_position = [234, 284, 7]
-        if new_shape is None:
-            new_shape = (512, 512, 12)  # xyz 这个形状与训练的对数据预处理的形状要一致，怎么切换不同模型？ todo： 在模块上设置预处理形状。和模型一致
-
-        if positive_click:
-            click_position.append(100)
-        else:
-            click_position.append(-100)
-
-        print("the image path used to infer is ", image_path, click_position, positive_click)  # result is correct
-
-        # 预处理
-        origin = sitk.ReadImage(image_path)
-        itk_img_res = inference.crop_wwwc(origin, max_v=2650, min_v=0)  # 和预处理文件一致 (512, 512, 12) WHD
-        itk_img_res, new_spacing = inference.resampleImage(
-            itk_img_res, out_size=new_shape
-        )  # 得到重新采样后的图像 origin: (880, 880, 12)
-        npy_img = sitk.GetArrayFromImage(itk_img_res).astype("float32")  # 12, 512, 512 DHW
-
-        input_data = np.expand_dims(np.transpose(npy_img, [2, 1, 0]), axis=0)
-        if input_data.max() > 0:  # 归一化
-            input_data = input_data / input_data.max()
-
-        print(f"输入网络前数据的形状:{input_data.shape}")  # shape (1, 512, 512, 12)
-
-        # 根据输入初始化
-        self.inference_predictor.set_input_image(input_data)
-
-        click = inference.Click(is_positive=click_position[3] > 0, coords=click_position)
-        a = time.time()
-        pred_probs = self.inference_predictor.get_prediction_noclicker(click)
-        b = time.time()
-        output_data = (pred_probs > pred_thr) * pred_probs  #  (12, 512, 512) DHW
-        output_data[output_data > 0] = 1
-
-        x, y, z = click_position[:3]
-        nei = [(x + 1, y, z), (x - 1, y, z), (x, y + 1, z), (x, y - 1, z), (x, y, z - 1), (x, y, z + 1), (x, y, z)]
-        for n in nei:
-            xx, yy, zz = n
-            if 0 <= zz < 12:
-                output_data[xx, yy, zz] = i + 2
-
-        print(f"预测结果的形状：{output_data.shape}, 预测时间为 {(b-a)*1000} ms")  # shape (12, 512, 512) DHW
-
-        # 加载3d模型预测的mask，由 numpy 转换成SimpleITK格式
-        output_data = np.transpose(output_data, [2, 1, 0])
-        mask_itk_new = sitk.GetImageFromArray(output_data)  # (512, 512, 12) WHD
-        mask_itk_new.SetSpacing(new_spacing)
-        mask_itk_new.SetOrigin(origin.GetOrigin())
-        mask_itk_new.SetDirection(origin.GetDirection())
-        mask_itk_new = sitk.Cast(mask_itk_new, sitk.sitkUInt8)
-
-        # 暂时没有杂散目标，不需要最大联通域提取
-        Mask, _ = resampleImage(mask_itk_new, origin.GetSize(), origin.GetSpacing(), sitk.sitkNearestNeighbor)
-        Mask.CopyInformation(origin)
-
-        npy_img = sitk.GetArrayFromImage(Mask).astype("float32")  # 12, 512, 512 DHW
-        print("result shape", npy_img.shape)
-        return npy_img
-        # sitk.WriteImage(Mask, image_path.replace('.nii.gz','_predict_np_sitk_withoutsync.nii.gz'))
-        # print("预测成功！save to {}".format(image_path.replace('.nii.gz','_predict_np.nii.gz')))
-
-    def getControlPointXYZ(self, pointListNode, index):
-        v = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
-        # v = self._volumeNode
-        RasToIjkMatrix = vtk.vtkMatrix4x4()
-        v.GetRASToIJKMatrix(RasToIjkMatrix)
-
-        coord = pointListNode.GetNthControlPointPosition(index)
-
-        world = [0, 0, 0]
-        pointListNode.GetNthControlPointPositionWorld(index, world)
-
-        p_Ras = [coord[0], coord[1], coord[2], 1.0]
-        p_Ijk = RasToIjkMatrix.MultiplyDoublePoint(p_Ras)
-        p_Ijk = [round(i) for i in p_Ijk]
-
-        logging.debug(f"RAS: {coord}; WORLD: {world}; IJK: {p_Ijk}")
-        return p_Ijk[0:3]
-
     def getControlPointsXYZ(self, pointListNode, name):
         v = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
-        # v = self._volumeNode
         RasToIjkMatrix = vtk.vtkMatrix4x4()
         v.GetRASToIJKMatrix(RasToIjkMatrix)
 
@@ -651,31 +485,129 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         logging.info(f"{name} => Current control points: {point_set}")
         return point_set
 
-    def getImageData(self, save=False):
-        volumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
-        print(volumeNode)
-        if volumeNode is None:
-            return None
-        image_id = volumeNode.GetName()
-        print(image_id)
-        s = img_data.GetDimensions()
-        data_np = np.zeros(s)
-        tic = time.time()
-        for x in range(s[0]):
-            for y in range(s[1]):
-                for z in range(s[2]):
-                    data_np[x, y, z] = img_data.GetScalarComponentAsFloat(x, y, z, 0)
-        if save:
-            np.save("/home/lin/Desktop/data.npy", data_np)
+    def getControlPointXYZ(self, pointListNode, index):
+        v = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
+        # v = self._volumeNode
+        RasToIjkMatrix = vtk.vtkMatrix4x4()
+        v.GetRASToIJKMatrix(RasToIjkMatrix)
 
-        """
-        import nibabel as nib
-        data = np.load('/home/lin/Desktop/data.npy')
-        nib_img = nib.Nifti1Image(data, np.eye(4))
-        nib.save(nib_img, "/home/lin/Desktop/test.nii.gz")
-        """
+        coord = pointListNode.GetNthControlPointPosition(index)
 
-        return data_np
+        world = [0, 0, 0]
+        pointListNode.GetNthControlPointPositionWorld(index, world)
+
+        p_Ras = [coord[0], coord[1], coord[2], 1.0]
+        p_Ijk = RasToIjkMatrix.MultiplyDoublePoint(p_Ras)
+        p_Ijk = [round(i) for i in p_Ijk]
+
+        logging.debug(f"RAS: {coord}; WORLD: {world}; IJK: {p_Ijk}")
+        return p_Ijk[0:3]
+
+    def get_iou(self, gt_mask, pred_mask, ignore_label=-1):
+        ignore_gt_mask_inv = gt_mask != ignore_label
+        pred_mask = pred_mask == 1
+        obj_gt_mask = gt_mask == 4  # gt_mask[pred_mask][len(pred_mask)//2] todo replace to new
+
+        print("The overlap gt_mask's id is {} ".format(gt_mask[pred_mask][len(pred_mask) // 2]))
+
+        intersection = np.logical_and(np.logical_and(pred_mask, obj_gt_mask), ignore_gt_mask_inv).sum()
+        union = np.logical_and(np.logical_or(pred_mask, obj_gt_mask), ignore_gt_mask_inv).sum()
+
+        return intersection / union
+
+    def infer_image(self, click_position=None, positive_click=True, pred_thr=0.49):
+        """
+        click_position: one or serveral clicks represent by list like: [[234, 284, 7]]
+        positive_click: whether this click is positive or negative
+        """
+        try:
+            paddle.device.set_device(self.device)
+        except AttributeError:
+            slicer.util.errorDisplay("The model is not loaded, Please press load model first")
+            return
+
+        print("before", click_position)  # test
+        for i, v in enumerate(click_position):
+            click_position[i] = int(self.ratio[i] * click_position[i])
+        print("after", click_position)
+
+        if positive_click:
+            click_position.append(100)
+        else:
+            click_position.append(-100)
+
+        print(
+            "The {} click is click on {} (resampled)".format(["negative", "positive"][positive_click], click_position)
+        )  # result is correct
+
+        click = inference.Click(is_positive=positive_click, coords=click_position)
+        a = time.time()
+        pred_probs = self.inference_predictor.get_prediction_noclicker(click)
+        b = time.time()
+        output_data = (pred_probs > pred_thr) * pred_probs  #  (12, 512, 512) DHW
+        output_data[output_data > 0] = 1
+
+        print(f"预测结果的形状：{output_data.shape}, 预测时间为 {(b-a)*1000} ms")  # shape (12, 512, 512) DHW test
+
+        self.ui.progressBar.setValue(90)
+
+        # 加载3d模型预测的mask，由 numpy 转换成SimpleITK格式
+        output_data = np.transpose(output_data, [2, 1, 0])
+        mask_itk_new = sitk.GetImageFromArray(output_data)  # (512, 512, 12) WHD
+        mask_itk_new.SetSpacing(self.new_spacing)
+        mask_itk_new.SetOrigin(self.origin.GetOrigin())
+        mask_itk_new.SetDirection(self.origin.GetDirection())
+        mask_itk_new = sitk.Cast(mask_itk_new, sitk.sitkUInt8)
+
+        # 暂时没有杂散目标，不需要最大联通域提取
+        Mask, _ = inference.resampleImage(
+            mask_itk_new, self.origin.GetSize(), self.origin.GetSpacing(), sitk.sitkNearestNeighbor
+        )
+        Mask.CopyInformation(self.origin)
+
+        npy_img = sitk.GetArrayFromImage(Mask).astype("float32")  # 12, 512, 512 DHW
+
+        return npy_img
+
+    def onSceneEndImport(self, caller, event):
+        if self._endImportProcessing:
+            return
+
+        self._endImportProcessing = True
+        self._endImportProcessing = False
+
+    # def getImageData(self, save=False):
+    #     volumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
+    #     print(volumeNode)
+    #     if volumeNode is None:
+    #         return None
+    #     image_id = volumeNode.GetName()
+    #     print(image_id)
+    #     s = img_data.GetDimensions()
+    #     data_np = np.zeros(s)
+    #     tic = time.time()
+    #     for x in range(s[0]):
+    #         for y in range(s[1]):
+    #             for z in range(s[2]):
+    #                 data_np[x, y, z] = img_data.GetScalarComponentAsFloat(x, y, z, 0)
+    #     if save:
+    #         np.save("/home/lin/Desktop/data.npy", data_np)
+
+    #     """
+    #     import nibabel as nib
+    #     data = np.load('/home/lin/Desktop/data.npy')
+    #     nib_img = nib.Nifti1Image(data, np.eye(4))
+    #     nib.save(nib_img, "/home/lin/Desktop/test.nii.gz")
+    #     """
+
+    #     return data_np
+
+    def set_segmentation_opacity(self):
+        segmentation = slicer.util.getNode("EIMedSeg3DSegmentation")
+        # segmentation = self._segmentNode.GetSegmentation()
+        threshold = self.ui.threshSlider.value
+        displayNode = segmentation.GetDisplayNode()
+        displayNode.SetOpacity3D(threshold)  # Set overall opacity of the segmentation
 
     def cleanup(self):
         """
@@ -766,7 +698,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         #     firstVolumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
         #     if firstVolumeNode:
         #         self._parameterNode.SetNodeReferenceID("InputVolume", firstVolumeNode.GetID())
-        pass
 
     def setParameterNode(self, inputParameterNode):
         """
@@ -881,180 +812,41 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self._parameterNode.EndModify(wasModified)
 
-    def onApplyButton(self):
-        """
-        Run processing when user clicks "Apply" button.
-        """
-        pass
+    # def onEditControlPoints(self, pointListNode, tagName):
+    #     if pointListNode is None:
+    #         return
 
-    def onClickDeepgrow(self, current_point, skip_infer=False):
-        print("onClickDeepgrow")
-        # model = self.ui.deepgrowModelSelector.currentText
-        # if not model:
-        #     slicer.util.warningDisplay("Please select a deepgrow model")
-        #     return
+    #     pointListNode.RemoveAllControlPoints()
+    #     segmentId, segment = self.currentSegment()
+    #     if segment and segmentId:
+    #         v = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
+    #         IjkToRasMatrix = vtk.vtkMatrix4x4()
+    #         v.GetIJKToRASMatrix(IjkToRasMatrix)
 
-        # _, segment = self.currentSegment()
-        # if not segment:
-        #     slicer.util.warningDisplay("Please add the required label to run deepgrow")
-        #     return
+    #         fPosStr = vtk.mutable("")
+    #         segment.GetTag(tagName, fPosStr)
+    #         pointset = str(fPosStr)
+    #         logging.debug(f"{segmentId} => {segment.GetName()} Control points are: {pointset}")
 
-        # foreground_all = self.getControlPointsXYZ(self.dgPositivePointListNode, "foreground")
-        # background_all = self.getControlPointsXYZ(self.dgNegativePointListNode, "background")
+    #         if fPosStr is not None and len(pointset) > 0:
+    #             points = json.loads(pointset)
+    #             for p in points:
+    #                 p_Ijk = [p[0], p[1], p[2], 1.0]
+    #                 p_Ras = IjkToRasMatrix.MultiplyDoublePoint(p_Ijk)
+    #                 logging.debug(f"Add Control Point: {p_Ijk} => {p_Ras}")
+    #                 pointListNode.AddControlPoint(p_Ras[0:3])
 
-        # segment.SetTag("MONAILabel.ForegroundPoints", json.dumps(foreground_all))
-        # segment.SetTag("MONAILabel.BackgroundPoints", json.dumps(background_all))
-        # if skip_infer:
-        #     return
-
-        # # use model info "deepgrow" to determine
-        # deepgrow_3d = False if self.models[model].get("dimension", 3) == 2 else True
-        # start = time.time()
-
-        # label = segment.GetName()
-        # operationDescription = f"Run Deepgrow for segment: {label}; model: {model}; 3d {deepgrow_3d}"
-        # logging.debug(operationDescription)
-
-        # if not current_point:
-        #     if not foreground_all and not deepgrow_3d:
-        #         slicer.util.warningDisplay(operationDescription + " - points not added")
-        #         return
-        #     current_point = foreground_all[-1] if foreground_all else background_all[-1] if background_all else None
-
-        # try:
-        #     qt.QApplication.setOverrideCursor(qt.Qt.WaitCursor)
-
-        #     sliceIndex = None
-        #     if self.deepedit_multi_label:
-        #         params = {}
-        #         segmentation = self._segmentNode.GetSegmentation()
-        #         for name in self.info.get("labels", []):
-        #             points = []
-        #             segmentId = segmentation.GetSegmentIdBySegmentName(name)
-        #             segment = segmentation.GetSegment(segmentId) if segmentId else None
-        #             if segment:
-        #                 fPosStr = vtk.mutable("")
-        #                 segment.GetTag("MONAILabel.ForegroundPoints", fPosStr)
-        #                 pointset = str(fPosStr)
-        #                 print(f"{segmentId} => {name} Control points are: {pointset}")
-        #                 if fPosStr is not None and len(pointset) > 0:
-        #                     points = json.loads(pointset)
-
-        #             params[name] = points
-        #         params["label"] = label
-        #         labels = None
-        #     else:
-        #         sliceIndex = current_point[2] if current_point else None
-        #         logging.debug(f"Slice Index: {sliceIndex}")
-
-        #         if deepgrow_3d or not sliceIndex:
-        #             foreground = foreground_all
-        #             background = background_all
-        #         else:
-        #             foreground = [x for x in foreground_all if x[2] == sliceIndex]
-        #             background = [x for x in background_all if x[2] == sliceIndex]
-
-        #         logging.debug(f"Foreground: {foreground}")
-        #         logging.debug(f"Background: {background}")
-        #         logging.debug(f"Current point: {current_point}")
-
-        #         params = {
-        #             "label": label,
-        #             "foreground": foreground,
-        #             "background": background,
-        #         }
-        #         labels = [label]
-
-        #     params["label"] = label
-        #     params.update(self.getParamsFromConfig("infer", model))
-        #     print(f"Request Params for Deepgrow/Deepedit: {params}")
-
-        #     image_file = self.current_sample["id"]
-        #     result_file, params = self.logic.infer(model, image_file, params, session_id=self.getSessionId())
-        #     print(f"Result Params for Deepgrow/Deepedit: {params}")
-        #     if labels is None:
-        #         labels = (
-        #             params.get("label_names")
-        #             if params and params.get("label_names")
-        #             else self.models[model].get("labels")
-        #         )
-        #         if labels and isinstance(labels, dict):
-        #             labels = [k for k, _ in sorted(labels.items(), key=lambda item: item[1])]
-
-        #     freeze = label if self.ui.freezeUpdateCheckBox.checked else None
-        #     self.updateSegmentationMask(result_file, labels, None if deepgrow_3d else sliceIndex, freeze=freeze)
-        # except:
-        #     logging.exception("Unknown Exception")
-        #     slicer.util.errorDisplay(operationDescription + " - unexpected error.", detailedText=traceback.format_exc())
-        # finally:
-        #     qt.QApplication.restoreOverrideCursor()
-
-        # self.updateGUIFromParameterNode()
-        # logging.info(f"Time consumed by Deepgrow: {time.time() - start:3.1f}")
-
-    def onEditControlPoints(self, pointListNode, tagName):
-        if pointListNode is None:
-            return
-
-        pointListNode.RemoveAllControlPoints()
-        segmentId, segment = self.currentSegment()
-        if segment and segmentId:
-            # v = self._volumeNode
-            v = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
-            IjkToRasMatrix = vtk.vtkMatrix4x4()
-            v.GetIJKToRASMatrix(IjkToRasMatrix)
-
-            fPosStr = vtk.mutable("")
-            segment.GetTag(tagName, fPosStr)
-            pointset = str(fPosStr)
-            logging.debug(f"{segmentId} => {segment.GetName()} Control points are: {pointset}")
-
-            if fPosStr is not None and len(pointset) > 0:
-                points = json.loads(pointset)
-                for p in points:
-                    p_Ijk = [p[0], p[1], p[2], 1.0]
-                    p_Ras = IjkToRasMatrix.MultiplyDoublePoint(p_Ijk)
-                    logging.debug(f"Add Control Point: {p_Ijk} => {p_Ras}")
-                    pointListNode.AddControlPoint(p_Ras[0:3])
-
-    def onSelectLabel(self, caller=None, event=None):
-        self.updateParameterNodeFromGUI(caller, event)
-
-        self.ignorePointListNodeAddEvent = True
-        self.onEditControlPoints(self.dgPositivePointListNode, "MONAILabel.ForegroundPoints")
-        self.onEditControlPoints(self.dgNegativePointListNode, "MONAILabel.BackgroundPoints")
-        self.ignorePointListNodeAddEvent = False
-
-    # def getControlPointsXYZ(self, pointListNode, name):
-    #     """
-    #     load all pointset
-    #     """
-    #     RasToIjkMatrix = vtk.vtkMatrix4x4()
-
-    #     point_set = []
-    #     n = pointListNode.GetNumberOfControlPoints()
-    #     for i in range(n):
-    #         coord = pointListNode.GetNthControlPointPosition(i)
-
-    #         world = [0, 0, 0]
-    #         pointListNode.GetNthControlPointPositionWorld(i, world)
-
-    #         p_Ras = [coord[0], coord[1], coord[2], 1.0]
-    #         p_Ijk = RasToIjkMatrix.MultiplyDoublePoint(p_Ras)
-    #         p_Ijk = [round(i) for i in p_Ijk]
-
-    #         logging.debug(f"RAS: {coord}; WORLD: {world}; IJK: {p_Ijk}")
-    #         point_set.append(p_Ijk[0:3])
-
-    #     logging.info(f"{name} => Current control points: {point_set}")
-    #     return point_set
+    # def onSelectLabel(self, caller=None, event=None):
+    #     self.updateParameterNodeFromGUI(caller, event)
+    #     self.ignorePointListNodeAddEvent = True
+    #     self.onEditControlPoints(self.dgPositivePointListNode, "MONAILabel.ForegroundPoints")
+    #     self.onEditControlPoints(self.dgNegativePointListNode, "MONAILabel.BackgroundPoints")
+    #     self.ignorePointListNodeAddEvent = False
 
 
 #
 # EIMedSeg3DLogic
 #
-
-
 class EIMedSeg3DLogic(ScriptedLoadableModuleLogic):
     """This class should implement all the actual
     computation done by your module.  The interface
