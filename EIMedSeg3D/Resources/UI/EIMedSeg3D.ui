@@ -140,7 +140,7 @@
      <item>
       <widget class="QLabel" name="threshLabel">
        <property name="text">
-        <string>Segment Opacity; </string>
+        <string>Segment Opacity: </string>
        </property>
       </widget>
      </item>
