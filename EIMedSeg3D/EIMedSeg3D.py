@@ -147,6 +147,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._segmentEditor = {}
         self._currVolumeNode_scanPath = {}
         self._thresh = 0.9  # output threshold
+        self._prev_segId = None
 
         self._updatingGUIFromParameterNode = False
         self._endImportProcessing = False
@@ -228,6 +229,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.predictor_params_ = {"norm_radius": 2, "spatial_scale": 1.0}
         self.ratio = (512 / 880, 512 / 880, 12 / 12)  # xyz 这个形状与训练的对数据预处理的形状要一致，怎么切换不同模型？ todo： 在模块上设置预处理形状。和模型一致
         self.train_shape = (512, 512, 12)
+        self.out_numpy_shape = (12, 880, 880)
         self.image_ww = (0, 2650)  # low, high range for image crop
         self.test_iou = False  # the label file need to be set correctly
         self.file_suffix = [".nii"]  # files with these suffix will be loaded
@@ -327,33 +329,13 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # 1. load new scan & preprocess
         if len(self._scanPaths) == 0:
-            slicer.delayDisplay("Please load scans before click next scan.", autoCloseMsec=1200)
+            slicer.util.delayDisplay("Please load scans before click next scan.", autoCloseMsec=1200)
             return
         image_path = self._scanPaths[self._currScanIdx]
         self._currVolumeNode = slicer.util.loadVolume(image_path)
         self._currVolumeNode_scanPath[self._currVolumeNode] = image_path
         self._currLabelPath = image_path.replace(".nii", "_label.nii")
-
-        self.origin = sitk.ReadImage(image_path)
-        itk_img_res = inference.crop_wwwc(
-            self.origin, max_v=self.image_ww[1], min_v=self.image_ww[0]
-        )  # 和预处理文件一致 (512, 512, 12) WHD
-        itk_img_res, self.new_spacing = inference.resampleImage(
-            itk_img_res, out_size=self.train_shape
-        )  # 得到重新采样后的图像 origin: (880, 880, 12)
-
-        npy_img = sitk.GetArrayFromImage(itk_img_res).astype("float32")  # 12, 512, 512 DHW
-
-        input_data = np.expand_dims(np.transpose(npy_img, [2, 1, 0]), axis=0)
-        if input_data.max() > 0:  # 归一化
-            input_data = input_data / input_data.max()
-
-        print(f"输入网络前数据的形状:{input_data.shape}")  # shape (1, 512, 512, 12)
-
-        try:
-            self.inference_predictor.set_input_image(input_data)
-        except AttributeError:
-            slicer.util.delayDisplay("Please load model first", autoCloseMsec=1200)
+        self.inference_predictor.original_image = None
 
         # 2. load or create segmentation
         # todo if osp.exists(self._scanPaths[scanIdx]):
@@ -411,6 +393,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 name = segment.GetName()
                 if name in txt_catgs.keys():
                     segment.SetLabelValue(txt_catgs[name]["labelValue"])
+                    segment.SetColor(tuple([round(item, 6) for item in np.divide(txt_catgs[name]["color"], 255)]))
         else:
             print("sync from segmenteditor")
             for segId in self._segmentEditor.keys():
@@ -418,6 +401,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 segmentation.AddEmptySegment(segId, labelNode.name, labelNode.color)
                 segment = segmentation.GetSegment(segId)
                 segment.SetLabelValue(labelNode.labelValue)
+                segment.SetColor(labelNode.color)
+
             self._segmentEditor.clear()
 
     def getCatgFromSegmentation(self, segmentation):
@@ -496,6 +481,15 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             segment = segmentation.GetSegment(segmentId)
             print("Current labelvalue is ", segment.GetLabelValue())
 
+            if self._prev_segId is None:
+                self._prev_segId = segmentId
+                self.set_image()
+            elif self._prev_segId != segmentId:
+                self.set_image()
+            else:
+                if self.inference_predictor.original_image is None:
+                    self.set_image()
+
             # get current seg mask as numpy
             res = slicer.util.arrayFromSegmentBinaryLabelmap(self._segmentNode, segmentId, self._currVolumeNode)
             self.ui.progressBar.setValue(10)
@@ -516,10 +510,32 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 print("Current IOU is {}".format(iou))
 
             # set new numpy mask to segmentation
-            mask *= segment.GetLabelValue()
             slicer.util.updateSegmentBinaryLabelmapFromArray(mask, self._segmentNode, segmentId, self._currVolumeNode)
 
         self.ignorePointListNodeAddEvent = False
+
+    def set_image(self):
+        print("current image is ", self._scanPaths[self._currScanIdx])
+        self.origin = sitk.ReadImage(self._scanPaths[self._currScanIdx])
+        itk_img_res = inference.crop_wwwc(
+            self.origin, max_v=self.image_ww[1], min_v=self.image_ww[0]
+        )  # 和预处理文件一致 (512, 512, 12) WHD
+        itk_img_res, self.new_spacing = inference.resampleImage(
+            itk_img_res, out_size=self.train_shape
+        )  # 得到重新采样后的图像 origin: (880, 880, 12)
+
+        npy_img = sitk.GetArrayFromImage(itk_img_res).astype("float32")  # 12, 512, 512 DHW
+
+        input_data = np.expand_dims(np.transpose(npy_img, [2, 1, 0]), axis=0)
+        if input_data.max() > 0:  # 归一化
+            input_data = input_data / input_data.max()
+
+        print(f"输入网络前数据的形状:{input_data.shape}")  # shape (1, 512, 512, 12)
+
+        try:
+            self.inference_predictor.set_input_image(input_data)
+        except AttributeError:
+            slicer.util.delayDisplay("Please load model first", autoCloseMsec=1200)
 
     def getControlPointsXYZ(self, pointListNode, name):
         v = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
@@ -634,17 +650,20 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         # 1. find all segmentid in current segmentation and save them to nii
         segmentation = self._segmentNode.GetSegmentation()
-        resTemp = []
+        resFinal = np.zeros(shape=self.out_numpy_shape)
         for segId in segmentation.GetSegmentIDs():
             segment = segmentation.GetSegment(segId)
             labelValue = segment.GetLabelValue()
+            print("labelValue", labelValue)
 
             # get current seg mask as numpy
             res = slicer.util.arrayFromSegmentBinaryLabelmap(self._segmentNode, segId, self._currVolumeNode)
-            res *= labelValue
-            resTemp.append(res)
+            # res *= labelValue
+            resFinal[res == 1] = labelValue
+            print("segid", labelValue, np.unique(resFinal), np.unique(res))
 
-        resFinal = sum(resTemp)
+        print("Max of final result", np.unique(resFinal), resFinal.shape)
+
         scanPath = self._currVolumeNode_scanPath.get(self._currVolumeNode)
 
         origin = sitk.ReadImage(scanPath)
@@ -652,18 +671,18 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         mask.SetSpacing(origin.GetSpacing())
         mask.SetOrigin(origin.GetOrigin())
         mask.SetDirection(origin.GetDirection())
-        labelImg = sitk.Cast(mask, sitk.sitkUInt8)
+        mask = sitk.Cast(mask, sitk.sitkUInt8)
 
         dotPos = scanPath.find(".")
         labelPath = scanPath[:dotPos] + "_label" + scanPath[dotPos:]
-        sitk.WriteImage(labelImg, labelPath)
+        sitk.WriteImage(mask, labelPath)
 
         slicer.util.delayDisplay(f"{labelPath.split('/')[-1]} save successfully", autoCloseMsec=1200)
 
     def onSceneEndImport(self, caller, event):
-        print("onSceneEndImport")
         if self._endImportProcessing:
             return
+        print("onSceneEndImport")
 
         self._endImportProcessing = True
         self._endImportProcessing = False
@@ -680,7 +699,20 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         Called when the application closes and the module widget is destroyed.
         """
         print("cleanup")
+        self.clearScene()
         self.removeObservers()
+        self.resetPointList(
+            self.ui.dgPositiveControlPointPlacementWidget,
+            self.dgPositivePointListNode,
+            self.dgPositivePointListNodeObservers,
+        )
+        self.dgPositivePointListNode = None
+        self.resetPointList(
+            self.ui.dgNegativeControlPointPlacementWidget,
+            self.dgNegativePointListNode,
+            self.dgNegativePointListNodeObservers,
+        )
+        self.dgNegativePointListNode = None
 
     def enter(self):
         """
