@@ -15,9 +15,11 @@ from inference.ops import DistMaps3D, ScaleLayer, BatchImageNormalize3D, Sigmoid
 
 class Click:
     def __init__(self, is_positive, coords, indx=None):
-        self.is_positive = is_positive
-        self.coords = coords
-        self.indx = indx
+        if coord is None or is_positive is None:
+            raise ValueError("The coord is {}, is_positive is {} and one of them is None, but none of them should be.")
+        self.coord = coord
+        self.is_positive = isPositivePoint
+        self.index = None
 
     @property
     def coords_and_indx(self):
@@ -114,8 +116,8 @@ class BasePredictor(object):
         if not self.with_prev_mask:
             self.prev_edge = paddle.zeros_like(self.original_image[:, :1, :, :, :])
 
-    def get_prediction_noclicker(self, click, prev_mask=None):
-        clicks_list = [click]  # one click a time
+    def get_prediction_noclicker(self, clicker, prev_mask=None):
+        clicks_list = clicker.get_clicks()  # one click a time todo：累计多个点
 
         input_image = self.original_image  # [1, 1, 512, 512, 12]
         if prev_mask is None:
@@ -221,6 +223,10 @@ class BasePredictor(object):
 
     def get_points_nd(self, clicks_lists):
         total_clicks = []
+        print(
+            "check_list",
+            clicks_lists,
+        )
         num_pos_clicks = [sum(x.is_positive for x in clicks_list) for clicks_list in clicks_lists]
         num_neg_clicks = [len(clicks_list) - num_pos for clicks_list, num_pos in zip(clicks_lists, num_pos_clicks)]
 

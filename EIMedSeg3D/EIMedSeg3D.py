@@ -23,6 +23,7 @@ from paddle.inference import create_predictor, Config
 import inference
 import inference.predictor as predictor
 
+
 #
 # EIMedSeg3D
 #
@@ -67,6 +68,34 @@ class LabelNode:
         self.labelValue = labelValue
         self.name = name
         self.color = color
+
+
+class Clicker(object):
+    def __init__(self):
+        self.reset_clicks()
+
+    def get_clicks(self, clicks_limit=None):  # [click1, click2, ...]
+        return self.clicks_list[:clicks_limit]
+
+    def add_click(self, click):
+        coords = click.coords
+
+        click.index = self.num_pos_clicks + self.num_neg_clicks
+        if click.is_positive:
+            self.num_pos_clicks += 1
+        else:
+            self.num_neg_clicks += 1
+
+        self.clicks_list.append(click)
+
+    def reset_clicks(self):
+        self.num_pos_clicks = 0
+        self.num_neg_clicks = 0
+
+        self.clicks_list = []
+
+    def __len__(self):
+        return len(self.clicks_list)
 
 
 #
@@ -229,7 +258,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.predictor_params_ = {"norm_radius": 2, "spatial_scale": 1.0}
         self.ratio = (512 / 880, 512 / 880, 12 / 12)  # xyz 这个形状与训练的对数据预处理的形状要一致，怎么切换不同模型？ todo： 在模块上设置预处理形状。和模型一致
         self.train_shape = (512, 512, 12)
-        self.out_numpy_shape = (12, 880, 880)
         self.image_ww = (0, 2650)  # low, high range for image crop
         self.test_iou = False  # the label file need to be set correctly
         self.file_suffix = [".nii"]  # files with these suffix will be loaded
@@ -486,6 +514,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.set_image()
             elif self._prev_segId != segmentId:
                 self.set_image()
+                self._prev_segId = segmentId
             else:
                 if self.inference_predictor.original_image is None:
                     self.set_image()
@@ -536,6 +565,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.inference_predictor.set_input_image(input_data)
         except AttributeError:
             slicer.util.delayDisplay("Please load model first", autoCloseMsec=1200)
+        print("#####################!!! reinitialed the image")
+        self.clicker = Clicker()
 
     def getControlPointsXYZ(self, pointListNode, name):
         v = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
@@ -601,28 +632,11 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             slicer.util.errorDisplay("The model is not loaded, Please press load model first")
             return
 
-        print("before", click_position)  # test
-        for i, v in enumerate(click_position):
-            click_position[i] = int(self.ratio[i] * click_position[i])
-        print("after", click_position)
-
-        if positive_click:
-            click_position.append(100)
-        else:
-            click_position.append(-100)
-
-        print(
-            "The {} click is click on {} (resampled)".format(["negative", "positive"][positive_click], click_position)
-        )  # result is correct
-
-        click = inference.Click(is_positive=positive_click, coords=click_position)
         a = time.time()
-        pred_probs = self.inference_predictor.get_prediction_noclicker(click)
-        b = time.time()
-        output_data = (pred_probs > pred_thr) * pred_probs  #  (12, 512, 512) DHW
+        self.prepare_click(click_position, positive_click)
+        pred_probs = self.inference_predictor.get_prediction_noclicker(self.clicker)
+        output_data = (pred_probs > pred_thr) * pred_probs  # (12, 512, 512) DHW
         output_data[output_data > 0] = 1
-
-        print(f"预测结果的形状：{output_data.shape}, 预测时间为 {(b-a)*1000} ms")  # shape (12, 512, 512) DHW test
 
         self.ui.progressBar.setValue(90)
 
@@ -641,8 +655,29 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         Mask.CopyInformation(self.origin)
 
         npy_img = sitk.GetArrayFromImage(Mask).astype("float32")  # 12, 512, 512 DHW
+        b = time.time()
+        print(f"预测结果的形状：{output_data.shape}, 预测时间为 {(b - a) * 1000} ms")  # shape (12, 512, 512) DHW test
 
         return npy_img
+
+    def prepare_click(self, click_position, positive_click):
+        print("before", click_position)
+        for i, v in enumerate(click_position):
+            click_position[i] = int(self.ratio[i] * click_position[i])
+        print("after", click_position)
+
+        if positive_click:
+            click_position.append(100)
+        else:
+            click_position.append(-100)
+
+        print(
+            "The {} click is click on {} (resampled)".format(["negative", "positive"][positive_click], click_position)
+        )  # result is correct
+
+        click = inference.Click(is_positive=positive_click, coords=click_position)
+        self.clicker.add_click(click)
+        print("####################### clicker length", len(self.clicker.clicks_list))
 
     def submitLabel(self):
         """
@@ -650,7 +685,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         # 1. find all segmentid in current segmentation and save them to nii
         segmentation = self._segmentNode.GetSegmentation()
-        resFinal = np.zeros(shape=self.out_numpy_shape)
+        resFinal = None
         for segId in segmentation.GetSegmentIDs():
             segment = segmentation.GetSegment(segId)
             labelValue = segment.GetLabelValue()
@@ -659,6 +694,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             # get current seg mask as numpy
             res = slicer.util.arrayFromSegmentBinaryLabelmap(self._segmentNode, segId, self._currVolumeNode)
             # res *= labelValue
+            if resFinal is None:
+                resFinal = np.zeros(shape=res.shape)
             resFinal[res == 1] = labelValue
             print("segid", labelValue, np.unique(resFinal), np.unique(res))
 
@@ -682,7 +719,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def onSceneEndImport(self, caller, event):
         if self._endImportProcessing:
             return
-        print("onSceneEndImport")
 
         self._endImportProcessing = True
         self._endImportProcessing = False
@@ -1007,7 +1043,7 @@ class EIMedSeg3DLogic(ScriptedLoadableModuleLogic):
         slicer.mrmlScene.RemoveNode(cliNode)
 
         stopTime = time.time()
-        logging.info(f"Processing completed in {stopTime-startTime:.2f} seconds")
+        logging.info(f"Processing completed in {stopTime - startTime:.2f} seconds")
 
     def get_segment_editor_node(self):
         # Use the Segment Editor module's parameter node for the embedded segment editor widget.
