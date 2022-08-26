@@ -196,17 +196,15 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.loadScanButton.connect("clicked(bool)", self.loadScans)
         self.ui.nextScanButton.connect("clicked(bool)", self.nextScan)
         self.ui.prevScanButton.connect("clicked(bool)", self.prevScan)
-        self.ui.submitLabelButton.connect("clicked(bool)", self.submitLabel)
+        self.ui.clearPointButton.connect("clicked(bool)", self.clearAllPoints)
 
         # Positive/Negative Point
         self.ui.dgPositiveControlPointPlacementWidget.setMRMLScene(slicer.mrmlScene)
         self.ui.dgPositiveControlPointPlacementWidget.placeButton().toolTip = "Select positive points"
-        self.ui.dgPositiveControlPointPlacementWidget.buttonsVisible = False  # whether to select color
         self.ui.dgPositiveControlPointPlacementWidget.placeButton().show()
 
         self.ui.dgNegativeControlPointPlacementWidget.setMRMLScene(slicer.mrmlScene)
         self.ui.dgNegativeControlPointPlacementWidget.placeButton().toolTip = "Select negative points"
-        self.ui.dgNegativeControlPointPlacementWidget.buttonsVisible = False
         self.ui.dgNegativeControlPointPlacementWidget.placeButton().show()
 
         # Segment editor
@@ -222,6 +220,16 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # TODO: move to initializeParameterNode
         self.ui.dgPositiveControlPointPlacementWidget.setNodeColor(qt.QColor(0, 255, 0))
         self.ui.dgNegativeControlPointPlacementWidget.setNodeColor(qt.QColor(255, 0, 0))
+        self.hideDeleteButtons()
+
+    def clearAllPoints(self):
+        self.ui.dgPositiveControlPointPlacementWidget.deleteAllPoints()
+        self.ui.dgNegativeControlPointPlacementWidget.deleteAllPoints()
+
+        
+    def hideDeleteButtons(self):
+        self.ui.dgPositiveControlPointPlacementWidget.deleteButton().hide()
+        self.ui.dgNegativeControlPointPlacementWidget.deleteButton().hide()
 
     def init_params(self):
         "init changble parameters here"
@@ -248,22 +256,22 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def loadScans(self):
         """Get all the scans under a folder and turn to the first one"""
-        currPath = self.ui.dataFolderLineEdit.currentPath
-        if currPath is None or len(currPath) == 0:
+        dataFolder = self.ui.dataFolderLineEdit.currentPath
+        if dataFolder is None or len(dataFolder) == 0:
             # test remove
-            # currPath = os.path.join(os.path.dirname(os.path.realpath(__file__)), os.path.join("test_MR", "Case2.nii"))
+            dataFolder = os.path.join(os.path.dirname(os.path.realpath(__file__)), os.path.join("test_MR", "Case2.nii"))
             slicer.util.delayDisplay("Please select a Data Folder first!", autoCloseMsec=5000)
             return
 
         self.clearScene()
 
         # list files in assigned directory
-        self._dataFolder = currPath
+        self._dataFolder = dataFolder
         paths = os.listdir(self._dataFolder)
         paths = sorted([s for s in paths if s.split(".")[0][-len("_label") :] != "_label"])
         paths = [osp.join(self._dataFolder, s) for s in paths]
 
-        self._scanPaths = [p for p in paths if p[p.find("."):] in self.file_suffix]
+        self._scanPaths = [p for p in paths if p[p.find(".") :] in self.file_suffix]
 
         slicer.util.delayDisplay(
             "Successfully loaded {} scans! \nPlease press on next scan to show them!".format(len(self._scanPaths)),
@@ -273,7 +281,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if osp.exists(osp.join(self._dataFolder, "currScanIdx.txt")):
             self.saveOrReadCurrIdx(saveFlag=False)
         else:
-            self._currScanIdx = 0
+            self._currScanIdx = None
 
         # test
         print("All scan paths", self._scanPaths)
@@ -281,6 +289,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # self.turnTo()
 
     def clearScene(self):
+        self.hideDeleteButtons()
         if self._currVolumeNode is not None:
             slicer.mrmlScene.RemoveNode(self._currVolumeNode)
         if self._segmentNode is not None:
@@ -320,7 +329,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def turnTo(self):
         """
-        Turn to the self._currScanIdx scan, load scan and label
+        Turn to the self._currScanIdx th scan, load scan and label
         """
         # sync the current increase/removed label
         if self._segmentNode is not None:
@@ -328,18 +337,23 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.clearScene()  # 切图时就clear所有当前volume node 和 segmentation node
 
-        # 1. load new scan & preprocess
         if len(self._scanPaths) == 0:
-            slicer.util.delayDisplay("Please load scans before click next scan.", autoCloseMsec=1200)
+            slicer.util.delayDisplay("No scan found, please load scans first.", autoCloseMsec=2000)
             return
+
+        # 1. load new scan & preprocess
         image_path = self._scanPaths[self._currScanIdx]
         self._currVolumeNode = slicer.util.loadVolume(image_path)
+        self.hideDeleteButtons()
         self._currVolumeNode_scanPath[self._currVolumeNode] = image_path
-        self._currLabelPath = image_path.replace(".nii", "_label.nii")
-        self.inference_predictor.original_image = None
+
+        # BUG: load image before loading model
+        # self.inference_predictor.original_image = None
 
         # 2. load or create segmentation
         # todo if osp.exists(self._scanPaths[scanIdx]):
+        dot_pos = image_path.find(".")
+        self._currLabelPath = image_path[:dot_pos] + "_label" + image_path[dot_pos:]
         if osp.exists(self._currLabelPath):
             self._segmentNode = slicer.modules.segmentations.logic().LoadSegmentationFromFile(
                 self._currLabelPath, False
@@ -358,6 +372,9 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # 4. set the editor as current result.
         self.ui.embeddedSegmentEditorWidget.setSegmentationNode(self._segmentNode)
         self.ui.embeddedSegmentEditorWidget.setMasterVolumeNode(self._currVolumeNode)
+
+        self.ui.dgPositiveControlPointPlacementWidget.setEnabled(True)
+        self.ui.dgNegativeControlPointPlacementWidget.setEnabled(True)
 
     def segmentation2Labelnode(self, segmentation):
         for segId in segmentation.GetSegmentIDs():
@@ -413,7 +430,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             segmentation (_type_): _description_
 
         Returns:
-            dict: {"name": {labelValue: int, "color": [color_r, color_g, color_b] }, ... } (color is 0~255)
+            dict: {"name": {labelValue: int, segmentName: str, "color": [color_r, color_g, color_b] }, ... } (color is 0~255)
         """
         catgs = []
 
@@ -422,7 +439,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             labelValue = max(self._labelValues) + 1
             catgs.append(
                 [
-                    labelValue,
+                    labelValue,  # BUG: use GetLabelValue
                     segment.GetName(),
                     *[int(v * 255) for v in segment.GetColor()],
                 ]
@@ -461,6 +478,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         return infor_dict
 
     def onControlPointAdded(self, observer, eventid):
+        self.hideDeleteButtons()
         posPoints = self.getControlPointsXYZ(self.dgPositivePointListNode, "positive")
         negPoints = self.getControlPointsXYZ(self.dgNegativePointListNode, "negative")
 
@@ -690,10 +708,11 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def set_segmentation_opacity(self):
         segmentation = slicer.util.getNode("EIMedSeg3DSegmentation")
-        # segmentation = self._segmentNode.GetSegmentation()
         threshold = self.ui.threshSlider.value
         displayNode = segmentation.GetDisplayNode()
-        displayNode.SetOpacity3D(threshold)  # Set overall opacity of the segmentation
+        displayNode.SetOpacity3D(threshold)  # Set opacity for 3d render
+        displayNode.SetOpacity(threshold)  # Set opacity for 2d
+        displayNode.SetOpacity(threshold)
 
     def cleanup(self):
         """
@@ -831,6 +850,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         This method is called whenever parameter node is changed.
         The module GUI is updated to show the current state of the parameter node.
         """
+        self.hideDeleteButtons()
 
         if self._parameterNode is None or self._updatingGUIFromParameterNode:
             return

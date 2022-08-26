@@ -2,12 +2,15 @@
 <ui version="4.0">
  <class>placePoint</class>
  <widget class="qMRMLWidget" name="placePoint">
+  <property name="enabled">
+   <bool>true</bool>
+  </property>
   <property name="geometry">
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>425</width>
-    <height>652</height>
+    <width>668</width>
+    <height>847</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
@@ -120,6 +123,86 @@
     </widget>
    </item>
    <item>
+    <layout class="QHBoxLayout" name="placePointLayout">
+     <item>
+      <widget class="QLabel" name="positiveLabel">
+       <property name="text">
+        <string>Positive Point:</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="qSlicerMarkupsPlaceWidget" name="dgPositiveControlPointPlacementWidget">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
+       <property name="buttonsVisible">
+        <bool>false</bool>
+       </property>
+       <property name="placeMultipleMarkups">
+        <enum>qSlicerMarkupsPlaceWidget::ForcePlaceMultipleMarkups</enum>
+       </property>
+       <property name="nodeColor">
+        <color>
+         <red>0</red>
+         <green>1</green>
+         <blue>0</blue>
+        </color>
+       </property>
+       <property name="currentNodeActive">
+        <bool>false</bool>
+       </property>
+       <property name="placeModeEnabled">
+        <bool>false</bool>
+       </property>
+       <property name="placeModePersistency">
+        <bool>false</bool>
+       </property>
+       <property name="deleteAllMarkupsOptionVisible">
+        <bool>false</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="negativeLabel">
+       <property name="text">
+        <string>Negative Point:</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="qSlicerMarkupsPlaceWidget" name="dgNegativeControlPointPlacementWidget">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
+       <property name="buttonsVisible">
+        <bool>false</bool>
+       </property>
+       <property name="deleteAllControlPointsOptionVisible">
+        <bool>false</bool>
+       </property>
+       <property name="placeMultipleMarkups">
+        <enum>qSlicerMarkupsPlaceWidget::ForcePlaceMultipleMarkups</enum>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QPushButton" name="clearPointButton">
+     <property name="text">
+      <string>Clear Points</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="Line" name="line_5">
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
+     </property>
+    </widget>
+   </item>
+   <item>
     <widget class="qMRMLSegmentEditorWidget" name="embeddedSegmentEditorWidget">
      <property name="segmentationNodeSelectorVisible">
       <bool>false</bool>
@@ -163,71 +246,6 @@
        </property>
        <property name="value">
         <double>0.900000000000000</double>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </item>
-   <item>
-    <layout class="QHBoxLayout" name="positiveLayout">
-     <item>
-      <widget class="QLabel" name="positiveLabel">
-       <property name="text">
-        <string>Positive Point:</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="qSlicerMarkupsPlaceWidget" name="dgPositiveControlPointPlacementWidget">
-       <property name="buttonsVisible">
-        <bool>false</bool>
-       </property>
-       <property name="placeMultipleMarkups">
-        <enum>qSlicerMarkupsPlaceWidget::ForcePlaceMultipleMarkups</enum>
-       </property>
-       <property name="nodeColor">
-        <color>
-         <red>0</red>
-         <green>1</green>
-         <blue>0</blue>
-        </color>
-       </property>
-       <property name="placeModePersistency">
-        <bool>false</bool>
-       </property>
-       <property name="deleteAllMarkupsOptionVisible">
-        <bool>false</bool>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </item>
-   <item>
-    <layout class="QHBoxLayout" name="negativeLayout">
-     <item>
-      <widget class="QLabel" name="negativeLabel">
-       <property name="text">
-        <string>Negative Point:</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="qSlicerMarkupsPlaceWidget" name="dgNegativeControlPointPlacementWidget">
-       <property name="buttonsVisible">
-        <bool>false</bool>
-       </property>
-       <property name="deleteAllControlPointsOptionVisible">
-        <bool>false</bool>
-       </property>
-       <property name="placeMultipleMarkups">
-        <enum>qSlicerMarkupsPlaceWidget::ForcePlaceMultipleMarkups</enum>
-       </property>
-       <property name="nodeColor">
-        <color>
-         <red>0</red>
-         <green>1</green>
-         <blue>0</blue>
-        </color>
        </property>
       </widget>
      </item>
