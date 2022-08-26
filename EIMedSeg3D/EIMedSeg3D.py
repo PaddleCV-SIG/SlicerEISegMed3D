@@ -223,6 +223,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.loadScanButton.connect("clicked(bool)", self.loadScans)
         self.ui.nextScanButton.connect("clicked(bool)", self.nextScan)
         self.ui.prevScanButton.connect("clicked(bool)", self.prevScan)
+        self.ui.submitLabelButton.connect("clicked(bool)", self.submitLabel)
         self.ui.clearPointButton.connect("clicked(bool)", self.clearAllPoints)
 
         # Positive/Negative Point
