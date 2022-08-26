@@ -277,6 +277,22 @@
     </widget>
    </item>
    <item>
+    <widget class="QPushButton" name="chooseLabelSavePathButton">
+     <property name="text">
+      <string>Choose path to save label</string>
+     </property>
+     <property name="iconSize">
+      <size>
+       <width>24</width>
+       <height>24</height>
+      </size>
+     </property>
+     <property name="autoDefault">
+      <bool>false</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
     <widget class="QPushButton" name="submitLabelButton">
      <property name="text">
       <string>Submit Label</string>

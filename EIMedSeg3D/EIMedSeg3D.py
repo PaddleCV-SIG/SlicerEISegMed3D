@@ -170,8 +170,10 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._dataFolder = None
         self._segmentNode = None
         self._currScanIdx = None
+        self._labelSavePath = None
         self._segmentEditor = {}
         self._currVolumeNode_scanPath = {}
+        self._labelUsed = {}
         self._thresh = 0.9  # output threshold
         self._prev_segId = None
 
@@ -223,6 +225,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.loadScanButton.connect("clicked(bool)", self.loadScans)
         self.ui.nextScanButton.connect("clicked(bool)", self.nextScan)
         self.ui.prevScanButton.connect("clicked(bool)", self.prevScan)
+        self.ui.chooseLabelSavePathButton.connect("clicked(bool)", self.chooseLabelSavePath)
         self.ui.submitLabelButton.connect("clicked(bool)", self.submitLabel)
         self.ui.clearPointButton.connect("clicked(bool)", self.clearAllPoints)
 
@@ -254,7 +257,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.dgPositiveControlPointPlacementWidget.deleteAllPoints()
         self.ui.dgNegativeControlPointPlacementWidget.deleteAllPoints()
 
-        
     def hideDeleteButtons(self):
         self.ui.dgPositiveControlPointPlacementWidget.deleteButton().hide()
         self.ui.dgNegativeControlPointPlacementWidget.deleteButton().hide()
@@ -295,10 +297,10 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # list files in assigned directory
         self._dataFolder = dataFolder
         paths = os.listdir(self._dataFolder)
-        paths = sorted([s for s in paths if s.split(".")[0][-len("_label") :] != "_label"])
+        paths = sorted([s for s in paths if s.split(".")[0][-len("_label"):] != "_label"])
         paths = [osp.join(self._dataFolder, s) for s in paths]
 
-        self._scanPaths = [p for p in paths if p[p.find(".") :] in self.file_suffix]
+        self._scanPaths = [p for p in paths if p[p.find("."):] in self.file_suffix]
 
         slicer.util.delayDisplay(
             "Successfully loaded {} scans! \nPlease press on next scan to show them!".format(len(self._scanPaths)),
@@ -458,10 +460,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def getCatgFromSegmentation(self, segmentation):
         """Get category info from a segmentation
-
         Args:
             segmentation (_type_): _description_
-
         Returns:
             dict: {"name": {labelValue: int, segmentName: str, "color": [color_r, color_g, color_b] }, ... } (color is 0~255)
         """
@@ -483,7 +483,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def getCatgFromTxt(self):
         """Get category info from labelx.txt
-
         Returns:
             dict: same as getCatgFromSegmentation
         """
@@ -562,7 +561,9 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 iou = self.get_iou(label, mask, newPointPos)
                 print("Current IOU is {}".format(iou))
 
-            # set new numpy mask to segmentation
+            if self._labelUsed.get(segmentId) is None:
+                self._labelUsed[segmentId] = self._segmentNode.GetSegmentation().GetSegment(segmentId).GetLabelValue()
+            # set new numpy mask to segmentation todo 这一句代码会改变labelValue
             slicer.util.updateSegmentBinaryLabelmapFromArray(mask, self._segmentNode, segmentId, self._currVolumeNode)
 
         self.ignorePointListNodeAddEvent = False
@@ -703,6 +704,11 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.clicker.add_click(click)
         print("####################### clicker length", len(self.clicker.clicks_list))
 
+    def chooseLabelSavePath(self):
+        self._labelSavePath = qt.QFileDialog.getExistingDirectory(None, 'Please select a directory to save', './')
+        print(self._labelSavePath)
+        pass
+
     def submitLabel(self):
         """
         save the file to the current path
@@ -712,9 +718,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         resFinal = None
         for segId in segmentation.GetSegmentIDs():
             segment = segmentation.GetSegment(segId)
-            labelValue = segment.GetLabelValue()
+            labelValue = self._labelUsed.get(segId)
             print("labelValue", labelValue)
-
             # get current seg mask as numpy
             res = slicer.util.arrayFromSegmentBinaryLabelmap(self._segmentNode, segId, self._currVolumeNode)
             # res *= labelValue
