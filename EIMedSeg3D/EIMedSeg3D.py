@@ -18,7 +18,7 @@ from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
 import paddle
-from paddle.inference import create_predictor, Config
+# from paddle.inference import create_predictor, Config
 
 import inference
 import inference.predictor as predictor
@@ -251,14 +251,14 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         currPath = self.ui.dataFolderLineEdit.currentPath
         if currPath is None or len(currPath) == 0:
             # test remove
-            currPath = os.path.join(os.path.dirname(os.path.realpath(__file__)), os.path.join("test_MR", "Case2.nii"))
-            slicer.util.delayDisplay("Please set data path in Data Folder", autoCloseMsec=1200)
-            # return
+            # currPath = os.path.join(os.path.dirname(os.path.realpath(__file__)), os.path.join("test_MR", "Case2.nii"))
+            slicer.util.delayDisplay("Please select a Data Folder first!", autoCloseMsec=5000)
+            return
 
         self.clearScene()
 
         # list files in assigned directory
-        self._dataFolder = osp.dirname(currPath)
+        self._dataFolder = currPath
         paths = os.listdir(self._dataFolder)
         paths = sorted([s for s in paths if s.split(".")[0][-len("_label") :] != "_label"])
         paths = [osp.join(self._dataFolder, s) for s in paths]
@@ -267,16 +267,18 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         slicer.util.delayDisplay(
             "Successfully loaded {} scans! \nPlease press on next scan to show them!".format(len(self._scanPaths)),
-            autoCloseMsec=1200,
+            autoCloseMsec=3000,
         )
 
         if osp.exists(osp.join(self._dataFolder, "currScanIdx.txt")):
             self.saveOrReadCurrIdx(saveFlag=False)
         else:
-            self._currScanIdx = None
+            self._currScanIdx = 0
 
         # test
         print("All scan paths", self._scanPaths)
+
+        # self.turnTo()
 
     def clearScene(self):
         if self._currVolumeNode is not None:
