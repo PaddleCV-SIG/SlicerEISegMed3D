@@ -58,8 +58,6 @@ and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR0132
 
     def initializeAfterStartup(self):
         print("initializeAfterStartup", slicer.app.commandOptions().noMainWindow)
-        # if not slicer.app.commandOptions().noMainWindow:
-        # print("in")
 
 
 class LabelNode:
@@ -293,9 +291,9 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         paths = [osp.join(self._dataFolder, s) for s in paths]
 
         self._scanPaths = [path for path in paths if osp.splitext(path)[-1] in self.file_suffix]
-
+        print(self._scanPaths)
         slicer.util.delayDisplay(
-            "Successfully loaded {} scans! \nPlease press on next scan to show them!".format(len(self._scanPaths)),
+            "Successfully loaded {} scans! \n".format(len(self._scanPaths)),
             autoCloseMsec=1200,
         )
 
@@ -304,8 +302,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         else:
             self._currScanIdx = None
 
-        # test
-        print(self._scanPaths)
+        self.nextScan()
 
     def clearScene(self):
         if self._currVolumeNode is not None:
@@ -323,26 +320,33 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self._currScanIdx = int(f.read())
 
     def nextScan(self):
+        if len(self._scanPaths) == 0:
+            slicer.util.errorDisplay(
+                "You have marked all the data, and there is no next scan. Please reselect the file path and click the Load Scans button."
+            )
+            return
         if self._currScanIdx is None:
             self._currScanIdx = 0
         else:
             if self._currScanIdx + 1 >= len(self._scanPaths):
-                slicer.util.errorDisplay(
-                    "You have marked all the data, and there is no next scan. Please reselect the file path and click the Load Scans button"
-                )
+                self._currScanIdx -= len(self._scanPaths) - 1
             self._currScanIdx += 1
 
         self.turnTo()
 
     def prevScan(self):
+        if len(self._scanPaths) == 0:
+            slicer.util.errorDisplay(
+                "You have marked all the data, and there is no next scan. Please reselect the file path and click the Load Scans button."
+            )
+            return
         if self._currScanIdx is None:
             self._currScanIdx = 0
         else:
             if self._currScanIdx - 1 < 0:
-                slicer.util.errorDisplay("There is no previous scan, please click the next scan button first.")
+                self._currScanIdx += len(self._scanPaths) - 1
             else:
                 self._currScanIdx -= 1
-
         self.turnTo()
 
     def turnTo(self):
@@ -482,7 +486,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 else:
                     self._labelValues.append(int(infor[0]))
                 infor[2:5] = map(int, infor[2:5])
-                print("infor1", infor[2:5])
+                # print("infor1", infor[2:5])
                 infor_dict[infor[1]] = {"labelValue": int(infor[0]), "color": infor[2:5]}
 
         return infor_dict
@@ -499,7 +503,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             "A {} point have been added on {}".format(["negative", "positive"][isPositivePoint], newPointPos),
             autoCloseMsec=1200,
         )
-
+        paddle.device.cuda.empty_cache()
         self.ignorePointListNodeAddEvent = True
 
         # maybe run inference here
@@ -535,7 +539,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             if self.test_iou:
                 label = sitk.ReadImage(self._currLabelPath)
                 label = sitk.GetArrayFromImage(label).astype("int32")
-                iou = self.get_iou(label, mask)
+                iou = self.get_iou(label, mask, newPointPos)
                 print("Current IOU is {}".format(iou))
 
             # set new numpy mask to segmentation
@@ -543,8 +547,18 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.ignorePointListNodeAddEvent = False
 
+    def get_iou(self, gt_mask, pred_mask, newPointPos, ignore_label=-1):
+        ignore_gt_mask_inv = gt_mask != ignore_label
+        pred_mask = pred_mask == 1
+        obj_gt_mask = gt_mask == gt_mask[newPointPos[2], newPointPos[1], newPointPos[0]]
+
+        intersection = np.logical_and(np.logical_and(pred_mask, obj_gt_mask), ignore_gt_mask_inv).sum()
+        union = np.logical_and(np.logical_or(pred_mask, obj_gt_mask), ignore_gt_mask_inv).sum()
+
+        return intersection / union
+
     def set_image(self):
-        print("current image is ", self._scanPaths[self._currScanIdx])
+        # print("current image is ", self._scanPaths[self._currScanIdx])
         self.origin = sitk.ReadImage(self._scanPaths[self._currScanIdx])
         itk_img_res = inference.crop_wwwc(
             self.origin, max_v=self.image_ww[1], min_v=self.image_ww[0]
@@ -565,7 +579,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.inference_predictor.set_input_image(input_data)
         except AttributeError:
             slicer.util.delayDisplay("Please load model first", autoCloseMsec=1200)
-        print("#####################!!! reinitialed the image")
+
         self.clicker = Clicker()
 
     def getControlPointsXYZ(self, pointListNode, name):
@@ -585,7 +599,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             p_Ijk = RasToIjkMatrix.MultiplyDoublePoint(p_Ras)
             p_Ijk = [round(i) for i in p_Ijk]
 
-            logging.info(f"RAS: {coord}; WORLD: {world}; IJK: {p_Ijk}")
+            # logging.info(f"RAS: {coord}; WORLD: {world}; IJK: {p_Ijk}")
             point_set.append(p_Ijk[0:3])
 
         logging.info(f"{name} => Current control points: {point_set}")
@@ -606,20 +620,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         p_Ijk = RasToIjkMatrix.MultiplyDoublePoint(p_Ras)
         p_Ijk = [round(i) for i in p_Ijk]
 
-        logging.debug(f"RAS: {coord}; WORLD: {world}; IJK: {p_Ijk}")
         return p_Ijk[0:3]
-
-    def get_iou(self, gt_mask, pred_mask, ignore_label=-1):
-        ignore_gt_mask_inv = gt_mask != ignore_label
-        pred_mask = pred_mask == 1
-        obj_gt_mask = gt_mask == 4  # gt_mask[pred_mask][len(pred_mask)//2] todo replace to new
-
-        print("The overlap gt_mask's id is {} ".format(gt_mask[pred_mask][len(pred_mask) // 2]))
-
-        intersection = np.logical_and(np.logical_and(pred_mask, obj_gt_mask), ignore_gt_mask_inv).sum()
-        union = np.logical_and(np.logical_or(pred_mask, obj_gt_mask), ignore_gt_mask_inv).sum()
-
-        return intersection / union
 
     def infer_image(self, click_position=None, positive_click=True, pred_thr=0.49):
         """
@@ -634,7 +635,9 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         a = time.time()
         self.prepare_click(click_position, positive_click)
-        pred_probs = self.inference_predictor.get_prediction_noclicker(self.clicker)
+        with paddle.no_grad():
+            pred_probs = self.inference_predictor.get_prediction_noclicker(self.clicker)
+
         output_data = (pred_probs > pred_thr) * pred_probs  # (12, 512, 512) DHW
         output_data[output_data > 0] = 1
 
@@ -661,21 +664,22 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         return npy_img
 
     def prepare_click(self, click_position, positive_click):
-        print("before", click_position)
+        click_position_new = []
         for i, v in enumerate(click_position):
-            click_position[i] = int(self.ratio[i] * click_position[i])
-        print("after", click_position)
+            click_position_new.append(int(self.ratio[i] * click_position[i]))
 
         if positive_click:
-            click_position.append(100)
+            click_position_new.append(100)
         else:
-            click_position.append(-100)
+            click_position_new.append(-100)
 
         print(
-            "The {} click is click on {} (resampled)".format(["negative", "positive"][positive_click], click_position)
+            "The {} click is click on {} (resampled)".format(
+                ["negative", "positive"][positive_click], click_position_new
+            )
         )  # result is correct
 
-        click = inference.Click(is_positive=positive_click, coords=click_position)
+        click = inference.Click(is_positive=positive_click, coords=click_position_new)
         self.clicker.add_click(click)
         print("####################### clicker length", len(self.clicker.clicks_list))
 
@@ -713,6 +717,9 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         dotPos = scanPath.find(".")
         labelPath = scanPath[:dotPos] + "_label" + scanPath[dotPos:]
         sitk.WriteImage(mask, labelPath)
+        self._scanPaths.remove(scanPath)
+        self._currScanIdx -= 1
+        self.nextScan()
 
         slicer.util.delayDisplay(f"{labelPath.split('/')[-1]} save successfully", autoCloseMsec=1200)
 
@@ -734,7 +741,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         Called when the application closes and the module widget is destroyed.
         """
-        print("cleanup")
+        # print("cleanup")
         self.clearScene()
         self.removeObservers()
         self.resetPointList(
@@ -754,7 +761,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         Called each time the user opens this module.
         """
-        print("enter")
+        # print("enter")
         # Make sure parameter node exists and observed
         self.initializeParameterNode()
 
@@ -773,11 +780,12 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         Called just before the scene is closed.
         """
-        print("onSceneStartClose")
+        # ("onSceneStartClose")
         # Parameter node will be reset, do not use it anymore
         self._currVolumeNode = None
         self._allVolumeNodes.clear()
         self._segmentNode = None
+        self.saveOrReadCurrIdx(saveFlag=True)
 
         self.setParameterNode(None)
         self.resetPointList(
@@ -820,7 +828,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         # Parameter node stores all user choices in parameter values, node selections, etc.
         # so that when the scene is saved and reloaded, these settings are restored.
-        print("initializeParameterNode")
+        # print("initializeParameterNode")
         self.setParameterNode(self.logic.getParameterNode())
         if not self._parameterNode.GetNodeReference("InputVolume"):
             firstVolumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
