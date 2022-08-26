@@ -166,7 +166,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.logic = None
         self._parameterNode = None
         self._currVolumeNode = None
-        self._allVolumeNodes = []  # TODO: remove
         self._scanPaths = []
         self._dataFolder = None
         self._segmentNode = None
@@ -258,7 +257,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.train_shape = (512, 512, 12)
         self.image_ww = (0, 2650)  # low, high range for image crop
         self.test_iou = False  # the label file need to be set correctly
-        self.file_suffix = [".nii"]  # files with these suffix will be loaded
+        self.file_suffix = [".nii", ".nii.gz"]  # files with these suffix will be loaded
         self.device, self.enable_mkldnn = "gpu", True
 
     def loadModelClicked(self):
@@ -278,23 +277,23 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         currPath = self.ui.dataFolderLineEdit.currentPath
         if currPath is None or len(currPath) == 0:
             # test remove
-            currPath = os.path.join(os.path.dirname(os.path.realpath(__file__)), os.path.join("test_MR", "Case2.nii"))
-            slicer.util.delayDisplay("Please set data path in Data Folder", autoCloseMsec=1200)
-            # return
+            # currPath = os.path.join(os.path.dirname(os.path.realpath(__file__)), os.path.join("test_MR", "Case2.nii"))
+            slicer.util.delayDisplay("Please select a Data Folder first!", autoCloseMsec=5000)
+            return
 
         self.clearScene()
 
         # list files in assigned directory
-        self._dataFolder = osp.dirname(currPath)
+        self._dataFolder = currPath
         paths = os.listdir(self._dataFolder)
         paths = sorted([s for s in paths if s.split(".")[0][-len("_label") :] != "_label"])
         paths = [osp.join(self._dataFolder, s) for s in paths]
 
-        self._scanPaths = [path for path in paths if osp.splitext(path)[-1] in self.file_suffix]
-        print(self._scanPaths)
+        self._scanPaths = [p for p in paths if p[p.find(".") :] in self.file_suffix]
+
         slicer.util.delayDisplay(
-            "Successfully loaded {} scans! \n".format(len(self._scanPaths)),
-            autoCloseMsec=1200,
+            "Successfully loaded {} scans! \nPlease press on next scan to show them!".format(len(self._scanPaths)),
+            autoCloseMsec=3000,
         )
 
         if osp.exists(osp.join(self._dataFolder, "currScanIdx.txt")):
@@ -303,6 +302,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self._currScanIdx = None
 
         self.nextScan()
+        # test
+        print("All scan paths", self._scanPaths)
 
     def clearScene(self):
         if self._currVolumeNode is not None:
@@ -783,7 +784,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # ("onSceneStartClose")
         # Parameter node will be reset, do not use it anymore
         self._currVolumeNode = None
-        self._allVolumeNodes.clear()
         self._segmentNode = None
         self.saveOrReadCurrIdx(saveFlag=True)
 

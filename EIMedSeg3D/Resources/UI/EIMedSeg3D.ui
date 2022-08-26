@@ -71,14 +71,17 @@
      </item>
      <item>
       <widget class="ctkPathLineEdit" name="dataFolderLineEdit">
+       <property name="acceptDrops">
+        <bool>true</bool>
+       </property>
        <property name="label">
         <string/>
        </property>
        <property name="filters">
-        <set>ctkPathLineEdit::AllDirs|ctkPathLineEdit::AllEntries|ctkPathLineEdit::Dirs|ctkPathLineEdit::Drives|ctkPathLineEdit::Executable|ctkPathLineEdit::Files|ctkPathLineEdit::NoDot|ctkPathLineEdit::NoDotDot|ctkPathLineEdit::Readable</set>
+        <set>ctkPathLineEdit::AllDirs|ctkPathLineEdit::Dirs|ctkPathLineEdit::Drives|ctkPathLineEdit::NoDot|ctkPathLineEdit::NoDotDot|ctkPathLineEdit::Readable</set>
        </property>
        <property name="options">
-        <set>ctkPathLineEdit::ReadOnly</set>
+        <set>ctkPathLineEdit::ReadOnly|ctkPathLineEdit::ShowDirsOnly</set>
        </property>
       </widget>
      </item>
