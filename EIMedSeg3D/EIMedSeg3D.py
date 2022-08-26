@@ -263,7 +263,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         paths = sorted([s for s in paths if s.split(".")[0][-len("_label") :] != "_label"])
         paths = [osp.join(self._dataFolder, s) for s in paths]
 
-        self._scanPaths = [p for p in paths if p[p.find("."):] in self.file_suffix]
+        self._scanPaths = [p for p in paths if p[p.find(".") :] in self.file_suffix]
 
         slicer.util.delayDisplay(
             "Successfully loaded {} scans! \nPlease press on next scan to show them!".format(len(self._scanPaths)),
@@ -688,10 +688,10 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def set_segmentation_opacity(self):
         segmentation = slicer.util.getNode("EIMedSeg3DSegmentation")
-        # segmentation = self._segmentNode.GetSegmentation()
         threshold = self.ui.threshSlider.value
         displayNode = segmentation.GetDisplayNode()
-        displayNode.SetOpacity3D(threshold)  # Set overall opacity of the segmentation
+        displayNode.SetOpacity3D(threshold)  # Set opacity for 3d render
+        displayNode.SetOpacity(threshold)  # Set opacity for 2d
 
     def cleanup(self):
         """
