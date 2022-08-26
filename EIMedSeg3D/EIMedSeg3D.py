@@ -139,7 +139,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.logic = None
         self._parameterNode = None
         self._currVolumeNode = None
-        self._allVolumeNodes = []  # TODO: remove
         self._scanPaths = []
         self._dataFolder = None
         self._segmentNode = None
@@ -232,7 +231,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.out_numpy_shape = (12, 880, 880)
         self.image_ww = (0, 2650)  # low, high range for image crop
         self.test_iou = False  # the label file need to be set correctly
-        self.file_suffix = [".nii"]  # files with these suffix will be loaded
+        self.file_suffix = [".nii", ".nii.gz"]  # files with these suffix will be loaded
         self.device, self.enable_mkldnn = "gpu", True
 
     def loadModelClicked(self):
@@ -264,7 +263,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         paths = sorted([s for s in paths if s.split(".")[0][-len("_label") :] != "_label"])
         paths = [osp.join(self._dataFolder, s) for s in paths]
 
-        self._scanPaths = [path for path in paths if osp.splitext(path)[-1] in self.file_suffix]
+        self._scanPaths = [p for p in paths if p[p.find("."):] in self.file_suffix]
 
         slicer.util.delayDisplay(
             "Successfully loaded {} scans! \nPlease press on next scan to show them!".format(len(self._scanPaths)),
@@ -277,7 +276,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self._currScanIdx = None
 
         # test
-        print(self._scanPaths)
+        print("All scan paths", self._scanPaths)
 
     def clearScene(self):
         if self._currVolumeNode is not None:
@@ -740,7 +739,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         print("onSceneStartClose")
         # Parameter node will be reset, do not use it anymore
         self._currVolumeNode = None
-        self._allVolumeNodes.clear()
         self._segmentNode = None
 
         self.setParameterNode(None)
