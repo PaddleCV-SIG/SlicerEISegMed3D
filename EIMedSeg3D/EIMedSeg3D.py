@@ -18,7 +18,7 @@ from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
 import paddle
-# from paddle.inference import create_predictor, Config
+from paddle.inference import create_predictor, Config
 
 import inference
 import inference.predictor as predictor
@@ -273,12 +273,10 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if osp.exists(osp.join(self._dataFolder, "currScanIdx.txt")):
             self.saveOrReadCurrIdx(saveFlag=False)
         else:
-            self._currScanIdx = 0
+            self._currScanIdx = None
 
         # test
         print("All scan paths", self._scanPaths)
-
-        # self.turnTo()
 
     def clearScene(self):
         if self._currVolumeNode is not None:
