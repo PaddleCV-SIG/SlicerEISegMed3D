@@ -169,6 +169,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._currVolumeNode_scanPath = {}
         self._thresh = 0.9  # output threshold
         self._prev_segId = None
+        self._syncing_catg = False
 
         self._updatingGUIFromParameterNode = False
         self._endImportProcessing = False
@@ -360,14 +361,13 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         Turn to the self._currScanIdx th scan, load scan and label
         """
-        # # sync the current increase/removed label
-        # if self._segmentNode is not None:
-        #     self.segmentation2Labelnode(self._segmentNode.GetSegmentation())
-
         # 0. ensure valid status and clear scene
         if len(self._scanPaths) == 0:
             slicer.util.delayDisplay("No scan found, please load scans first.", autoCloseMsec=2000)
             return
+
+        self.ui.dgPositiveControlPointPlacementWidget.setEnabled(False)
+        self.ui.dgNegativeControlPointPlacementWidget.setEnabled(False)
 
         self.clearScene()  # remove the volume and segmentation node
 
@@ -395,6 +395,15 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # 3. create category label from txt and segmentation
         self.catgTxt2Segmentation()
 
+        def sync(*args):
+            print("syncing")
+            # BUG: this func get called multiple times when segment name changes
+            if self._syncing_catg:
+                return
+            self.catgTxt2Segmentation()
+
+        self._segmentNode.AddObserver(self._segmentNode.GetContentModifiedEvents().GetValue(5), sync)
+
         # 4. set the editor as current result.
         self.ui.embeddedSegmentEditorWidget.setSegmentationNode(self._segmentNode)
         self.ui.embeddedSegmentEditorWidget.setMasterVolumeNode(self._currVolumeNode)
@@ -420,14 +429,19 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         Sync category info from labels.txt to segmentation provided
         - create if missing
-        - correct labelValue, name, color if segmentation differes from labels.txt
+        - correct name, color if segmentation differes from labels.txt
+
+        Note: labelValue is not changed in this func
         """
+        if self._syncing_catg:
+            return
+        self._syncing_catg = True
         segmentation = slicer.util.getNode("EIMedSeg3DSegmentation").GetSegmentation()
 
         # 1. get catg info from labels.txt
         txt_catgs = self.getCatgFromTxt()
         labelValue2name = {v["labelValue"]: k for k, v in txt_catgs.items()}
-        logging.info(f"txt_catgs: {txt_catgs}")  # revise data structure
+        # logging.info(f"txt_catgs: {txt_catgs}")
 
         # 2. for catgs in txt and segmentation, synx info
         segmentation_names = set()
@@ -438,7 +452,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             if name in txt_catgs.keys():
                 txt_catg = txt_catgs[name]
                 segment.SetColor(txt_catg["color"])
-                segment.SetLabelValue(txt_catg["labelValue"])
+                segment.SetColor(txt_catg["color"])  # BUG: why need to set two times... just weird
+                # segment.SetLabelValue(txt_catg["labelValue"])
             elif labelValue in labelValue2name.keys():
                 txt_catg = txt_catgs[labelValue2name[labelValue]]
                 segment.SetColor(txt_catg["color"])
@@ -449,6 +464,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         for name in set(txt_catgs.keys()) - set(segmentation_names):
             txt_catg = txt_catgs[name]
             segmentation.AddEmptySegment("", name, txt_catg["color"])
+
+        self._syncing_catg = False
 
     def getCatgFromTxt(self):
         """Parse category info from labels.txt
@@ -471,48 +488,48 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         return catgs
 
     def onControlPointAdded(self, observer, eventid):
+        self.ignorePointListNodeAddEvent = True
+
         posPoints = self.getControlPointsXYZ(self.dgPositivePointListNode, "positive")
         negPoints = self.getControlPointsXYZ(self.dgNegativePointListNode, "negative")
-
         newPointIndex = observer.GetDisplayNode().GetActiveControlPoint()
         newPointPos = self.getControlPointXYZ(observer, newPointIndex)
         isPositivePoint = False if len(posPoints) == 0 else newPointPos == posPoints[-1]
-
         slicer.util.delayDisplay(
-            "A {} point have been added on {}".format(["negative", "positive"][isPositivePoint], newPointPos),
+            f"A {'positive' if isPositivePoint else 'negative'} point has been added on {newPointPos}",
             autoCloseMsec=1200,
         )
-        paddle.device.cuda.empty_cache()
-        self.ignorePointListNodeAddEvent = True
 
-        # maybe run inference here
-        with slicer.util.tryWithErrorDisplay("Failed to compute results.", waitCursor=True):
+        with slicer.util.tryWithErrorDisplay("Failed to run inference.", waitCursor=True):
             segmentation = self._segmentNode.GetSegmentation()
             segmentId = self.ui.embeddedSegmentEditorWidget.currentSegmentID()
             segment = segmentation.GetSegment(segmentId)
-            print("Current labelvalue is ", segment.GetLabelValue())
+            print("Current labelvalue: ", segment.GetLabelValue())
 
-            if self._prev_segId is None:
-                self._prev_segId = segmentId
-                self.set_image()
-            elif self._prev_segId != segmentId:
-                self.set_image()
-                self._prev_segId = segmentId
-            else:
-                if self.inference_predictor.original_image is None:
-                    self.set_image()
+            # # TODO: remove
+            # if self._prev_segId is None:
+            #     self._prev_segId = segmentId
+            #     self.set_image()
+            # elif self._prev_segId != segmentId:
+            #     self.set_image()
+            #     self._prev_segId = segmentId
+            # else:
+            #     if self.inference_predictor.original_image is None:
+            #         self.set_image()
+            # paddle.device.cuda.empty_cache()
 
             # get current seg mask as numpy
             res = slicer.util.arrayFromSegmentBinaryLabelmap(self._segmentNode, segmentId, self._currVolumeNode)
             self.ui.progressBar.setValue(10)
 
             # test
-            # p = newPointPos
-            # p = [p[2], p[1], p[0]]
-            # res[p[0] - 10 : p[0] + 10, p[1] - 10 : p[1] + 10, p[2] - 10 : p[2] + 10] = 1
-            # mask = res
+            p = newPointPos
+            p = [p[2], p[1], p[0]]
+            res[p[0] - 10 : p[0] + 10, p[1] - 10 : p[1] + 10, p[2] - 10 : p[2] + 10] = 1
+            mask = res
             # !! predict image for test
-            mask = self.infer_image(newPointPos, isPositivePoint)  # (880, 880, 12) same as res
+
+            # mask = self.infer_image(newPointPos, isPositivePoint)  # (880, 880, 12) same as res
             self.ui.progressBar.setValue(100)
 
             if self.test_iou:
@@ -570,15 +587,11 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         n = pointListNode.GetNumberOfControlPoints()
         for i in range(n):
             coord = pointListNode.GetNthControlPointPosition(i)
-
             world = [0, 0, 0]
             pointListNode.GetNthControlPointPositionWorld(i, world)
-
             p_Ras = [coord[0], coord[1], coord[2], 1.0]
             p_Ijk = RasToIjkMatrix.MultiplyDoublePoint(p_Ras)
             p_Ijk = [round(i) for i in p_Ijk]
-
-            # logging.info(f"RAS: {coord}; WORLD: {world}; IJK: {p_Ijk}")
             point_set.append(p_Ijk[0:3])
 
         logging.info(f"{name} => Current control points: {point_set}")
@@ -710,9 +723,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._endImportProcessing = False
 
     def set_segmentation_opacity(self):
-        segmentation = slicer.util.getNode("EIMedSeg3DSegmentation")
         threshold = self.ui.threshSlider.value
-        displayNode = segmentation.GetDisplayNode()
+        displayNode = slicer.util.getNode("EIMedSeg3DSegmentation").GetDisplayNode()
         displayNode.SetOpacity3D(threshold)  # Set opacity for 3d render
         displayNode.SetOpacity(threshold)  # Set opacity for 2d
 
@@ -778,6 +790,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.dgNegativePointListNodeObservers,
         )
         self.dgNegativePointListNode = None
+        self.clearScene()
 
     def resetPointList(self, markupsPlaceWidget, pointListNode, pointListNodeObservers):
         if markupsPlaceWidget.placeModeEnabled:
