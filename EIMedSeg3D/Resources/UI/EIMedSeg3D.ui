@@ -189,9 +189,9 @@
     </layout>
    </item>
    <item>
-    <widget class="QPushButton" name="clearPointButton">
+    <widget class="QPushButton" name="finishSegmentButton">
      <property name="text">
-      <string>Clear Points</string>
+      <string>Finish Segment</string>
      </property>
     </widget>
    </item>
