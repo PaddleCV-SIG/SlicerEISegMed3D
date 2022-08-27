@@ -14,9 +14,9 @@ import slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
-import paddle
-import inference
-import inference.predictor as predictor
+# import paddle
+# import inference
+# import inference.predictor as predictor
 
 
 #
@@ -246,6 +246,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.dgNegativeControlPointPlacementWidget.setNodeColor(qt.QColor(255, 0, 0))
 
     def clearAllPoints(self):
+        self.catgTxt2Segmentation()
         self.ui.dgPositiveControlPointPlacementWidget.deleteAllPoints()
         self.ui.dgNegativeControlPointPlacementWidget.deleteAllPoints()
 
@@ -359,26 +360,26 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         Turn to the self._currScanIdx th scan, load scan and label
         """
-        # sync the current increase/removed label
-        if self._segmentNode is not None:
-            self.segmentation2Labelnode(self._segmentNode.GetSegmentation())
+        # # sync the current increase/removed label
+        # if self._segmentNode is not None:
+        #     self.segmentation2Labelnode(self._segmentNode.GetSegmentation())
 
-        self.clearScene()  # 切图时就clear所有当前volume node 和 segmentation node
-
+        # 0. ensure valid status and clear scene
         if len(self._scanPaths) == 0:
             slicer.util.delayDisplay("No scan found, please load scans first.", autoCloseMsec=2000)
             return
 
+        self.clearScene()  # remove the volume and segmentation node
+
         # 1. load new scan & preprocess
         image_path = self._scanPaths[self._currScanIdx]
         self._currVolumeNode = slicer.util.loadVolume(image_path)
-        self._currVolumeNode_scanPath[self._currVolumeNode] = image_path
+        self._currVolumeNode_scanPath[self._currVolumeNode] = image_path  # TODO: remove
 
         # BUG: load image before loading model
         # self.inference_predictor.original_image = None
 
-        # 2. load or create segmentation
-        # todo if osp.exists(self._scanPaths[scanIdx]):
+        # 2. load segmentation or create an empty one
         dot_pos = image_path.find(".")
         self._currLabelPath = image_path[:dot_pos] + "_label" + image_path[dot_pos:]
         if osp.exists(self._currLabelPath):
@@ -386,15 +387,13 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self._currLabelPath, False
             )
         else:
-            self._segmentNode = slicer.mrmlScene.AddNewNodeByClass(
-                "vtkMRMLSegmentationNode"
-            )  # Add segment node and segmentation
+            self._segmentNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
 
         self._segmentNode.SetName("EIMedSeg3DSegmentation")
         self._segmentNode.SetReferenceImageGeometryParameterFromVolumeNode(self._currVolumeNode)
 
         # 3. create category label from txt and segmentation
-        self.catgTxt2Segmentation(self._segmentNode.GetSegmentation())
+        self.catgTxt2Segmentation()
 
         # 4. set the editor as current result.
         self.ui.embeddedSegmentEditorWidget.setSegmentationNode(self._segmentNode)
@@ -411,75 +410,51 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 segmentId=segId, labelValue=segment.GetLabelValue(), name=segment.GetName(), color=segment.GetColor()
             )
 
-    def catgTxt2Segmentation(self, segmentation):
-        """
-        Sync category information from labels.txt to segmentation, and make sure the labelValue is correct
-        Record current segments in labelNodes.
-        Args:
-            segmentation (_type_): _description_
-        """
-        if self._segmentEditor == {}:
-            print("initialize the editor from txt.")
-            self._labelValues = []
-            # 1. get catg info from txt and segmentation
-            txt_catgs = self.getCatgFromTxt()
-            logging.info(f"txt_catgs: {txt_catgs}")  # revise data structure
-
-            curr_catgs = self.getCatgFromSegmentation(segmentation)
-            logging.info(f"curr_catgs: {curr_catgs}")
-
-            # 2. create and modify info in segmentation sync segment from txt infor
-            for Name in set(txt_catgs.keys()) - set(curr_catgs.keys()):
-                segmentation.AddEmptySegment("", Name, txt_catgs[Name]["color"])
-
-            # 3. sync label value from txt
-            for segIdx in segmentation.GetSegmentIDs():
-                segment = segmentation.GetSegment(segIdx)
-                name = segment.GetName()
-                if name in txt_catgs.keys():
-                    segment.SetLabelValue(txt_catgs[name]["labelValue"])
-                    segment.SetColor(tuple([round(item, 6) for item in np.divide(txt_catgs[name]["color"], 255)]))
-        else:
-            print("sync from segmenteditor")
-            for segId in self._segmentEditor.keys():
-                labelNode = self._segmentEditor[segId]
-                segmentation.AddEmptySegment(segId, labelNode.name, labelNode.color)
-                segment = segmentation.GetSegment(segId)
-                segment.SetLabelValue(labelNode.labelValue)
-                segment.SetColor(labelNode.color)
-
-            self._segmentEditor.clear()
-
-    def getCatgFromSegmentation(self, segmentation):
-        """Get category info from a segmentation
-
-        Args:
-            segmentation (_type_): _description_
-
-        Returns:
-            dict: {"name": {labelValue: int, segmentName: str, "color": [color_r, color_g, color_b] }, ... } (color is 0~255)
-        """
-        catgs = []
-
+    def segments(self):
+        segmentationNode = slicer.util.getNode("EIMedSeg3DSegmentation")
+        segmentation = segmentationNode.GetSegmentation()
         for segId in segmentation.GetSegmentIDs():
-            segment = segmentation.GetSegment(segId)
-            labelValue = max(self._labelValues) + 1
-            catgs.append(
-                [
-                    labelValue,  # BUG: use GetLabelValue
-                    segment.GetName(),
-                    *[int(v * 255) for v in segment.GetColor()],
-                ]
-            )
-            self._labelValues.append(labelValue)
+            yield segmentation.GetSegment(segId)
 
-        return {c[1]: {"labelValue": c[0], "color": c[2:5]} for c in catgs}
+    def catgTxt2Segmentation(self):
+        """
+        Sync category info from labels.txt to segmentation provided
+        - create if missing
+        - correct labelValue, name, color if segmentation differes from labels.txt
+        """
+        segmentation = slicer.util.getNode("EIMedSeg3DSegmentation").GetSegmentation()
+
+        # 1. get catg info from labels.txt
+        txt_catgs = self.getCatgFromTxt()
+        labelValue2name = {v["labelValue"]: k for k, v in txt_catgs.items()}
+        logging.info(f"txt_catgs: {txt_catgs}")  # revise data structure
+
+        # 2. for catgs in txt and segmentation, synx info
+        segmentation_names = set()
+
+        for segment in self.segments():
+            labelValue = segment.GetLabelValue()
+            name = segment.GetName()
+            if name in txt_catgs.keys():
+                txt_catg = txt_catgs[name]
+                segment.SetColor(txt_catg["color"])
+                segment.SetLabelValue(txt_catg["labelValue"])
+            elif labelValue in labelValue2name.keys():
+                txt_catg = txt_catgs[labelValue2name[labelValue]]
+                segment.SetColor(txt_catg["color"])
+                segment.SetName(labelValue2name[labelValue])
+            segmentation_names.add(segment.GetName())
+
+        # 3. create segments in txt but not in segmentation
+        for name in set(txt_catgs.keys()) - set(segmentation_names):
+            txt_catg = txt_catgs[name]
+            segmentation.AddEmptySegment("", name, txt_catg["color"])
 
     def getCatgFromTxt(self):
-        """Get category info from labelx.txt
+        """Parse category info from labels.txt
 
         Returns:
-            dict: same as getCatgFromSegmentation
+            dict: {name: {"labelValue": int, "color": [color_r, color_g, color_b] }, ... } (color is 0~1)
         """
         txt_path = osp.join(self._dataFolder, "labels.txt")
         if not osp.exists(txt_path):
@@ -487,22 +462,13 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         with open(txt_path, "r") as f:
             lines = f.readlines()
-            infor_dict = {}
+            catgs = {}
             for info in lines:
-                infor = info.split(" ")
-                if int(infor[0]) in self._labelValues:
-                    slicer.util.delayDisplay(
-                        "Label value {} of category {} has appeared before, please check your labels.txt do not have repeat label values.".format(
-                            infor[0], infor[1]
-                        )
-                    )
-                else:
-                    self._labelValues.append(int(infor[0]))
-                infor[2:5] = map(int, infor[2:5])
-                # print("infor1", infor[2:5])
-                infor_dict[infor[1]] = {"labelValue": int(infor[0]), "color": infor[2:5]}
+                info = info.split(" ")
+                info[2:5] = map(int, info[2:5])
+                catgs[info[1]] = {"labelValue": int(info[0]), "color": [c / 255 for c in info[2:5]]}
 
-        return infor_dict
+        return catgs
 
     def onControlPointAdded(self, observer, eventid):
         posPoints = self.getControlPointsXYZ(self.dgPositivePointListNode, "positive")
