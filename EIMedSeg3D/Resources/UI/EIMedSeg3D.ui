@@ -189,11 +189,22 @@
     </layout>
    </item>
    <item>
-    <widget class="QPushButton" name="finishSegmentButton">
-     <property name="text">
-      <string>Finish Segment</string>
-     </property>
-    </widget>
+    <layout class="QHBoxLayout" name="finishLayout">
+     <item>
+      <widget class="QPushButton" name="finishSegmentButton">
+       <property name="text">
+        <string>Finish Segment</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="finishScanButton">
+       <property name="text">
+        <string>Finish Scan</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
    </item>
    <item>
     <widget class="Line" name="line_5">

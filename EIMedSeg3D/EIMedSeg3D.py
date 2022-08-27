@@ -14,9 +14,12 @@ import slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
-import paddle
-import inference
-import inference.predictor as predictor
+# when test, wont use any paddle related funcion
+TEST = True
+if not TEST:
+    import paddle
+    import inference
+    import inference.predictor as predictor
 
 
 #
@@ -211,7 +214,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.loadScanButton.connect("clicked(bool)", self.loadScans)
         self.ui.nextScanButton.connect("clicked(bool)", self.nextScan)
         self.ui.prevScanButton.connect("clicked(bool)", self.prevScan)
-        self.ui.submitLabelButton.connect("clicked(bool)", self.submitLabel)
+        self.ui.finishScanButton.connect("clicked(bool)", self.finishScan)
         self.ui.finishSegmentButton.connect("clicked(bool)", self.exitInteractiveMode)
         self.ui.opacitySlider.connect("valueChanged(double)", self.setSegmentationOpacity)
 
@@ -395,7 +398,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.dgNegativeControlPointPlacementWidget.setEnabled(True)
 
         # 5. set image
-        self.prepImage()
+        if not TEST:
+            self.prepImage()
 
     """ category and segmentation management """
 
@@ -611,7 +615,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             segmentId = segmentation.AddEmptySegment("", segment.GetName(), segment.GetColor())
             self.ui.embeddedSegmentEditorWidget.setCurrentSegmentID(segmentId)
 
-        self.setImage()
+        if not TEST:
+            self.setImage()
         self.clicker = Clicker()
         self.ui.embeddedSegmentEditorWidget.setDisabled(True)
         self._using_interactive = True
@@ -650,16 +655,17 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             # get current seg mask as numpy
             self.ui.progressBar.setValue(10)
 
-            # # test
-            # p = newPointPos
-            # p = [p[2], p[1], p[0]]
-            # res = slicer.util.arrayFromSegmentBinaryLabelmap(self.segmentationNode, segmentId, self._currVolumeNode)
-            # mask = np.zeros_like(res)
-            # mask[p[0] - 10 : p[0] + 10, p[1] - 10 : p[1] + 10, p[2] - 10 : p[2] + 10] = 1
+            # # predict image for test
+            if TEST:
+                p = newPointPos
+                p = [p[2], p[1], p[0]]
+                res = slicer.util.arrayFromSegmentBinaryLabelmap(self.segmentationNode, segmentId, self._currVolumeNode)
+                mask = np.zeros_like(res)
+                mask[p[0] - 10 : p[0] + 10, p[1] - 10 : p[1] + 10, p[2] - 10 : p[2] + 10] = 1
+            else:
+                paddle.device.cuda.empty_cache()
+                mask = self.infer_image(newPointPos, isPositivePoint)  # (880, 880, 12) same as res
 
-            # !! predict image for test
-            paddle.device.cuda.empty_cache()
-            mask = self.infer_image(newPointPos, isPositivePoint)  # (880, 880, 12) same as res
             # set new numpy mask to segmentation
             slicer.util.updateSegmentBinaryLabelmapFromArray(
                 mask, self.segmentationNode, segmentId, self._currVolumeNode
@@ -769,27 +775,35 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.clicker.add_click(click)
         print("####################### clicker length", len(self.clicker.clicks_list))
 
-    def submitLabel(self):
+    def finishScan(self):
+        if self._using_interactive:
+            self.exitInteractiveMode()
+        self.saveSegmentation()
+
+    def saveSegmentation(self):
         """
         save the file to the current path
         """
-        # 1. find all segmentid in current segmentation and save them to nii
-        segmentation = self.segmentation
-        resFinal = None
-        for segId in segmentation.GetSegmentIDs():
-            segment = segmentation.GetSegment(segId)
-            labelValue = segment.GetLabelValue()
-            print("labelValue", labelValue)
+        tic = time.time()
+        # 1. generate final segmentation mask
+        catgs = self.getCatgFromTxt()
+        segmentationNode = self.segmentationNode
+        segmentation = segmentationNode.GetSegmentation()
+        size = self._currVolumeNode.GetImageData().GetDimensions()
+        size = [size[2], size[1], size[0]]
+        resFinal = np.zeros(size)
+        print("resFinal.shape", resFinal.shape)
 
-            # get current seg mask as numpy
-            res = slicer.util.arrayFromSegmentBinaryLabelmap(self.segmentationNode, segId, self._currVolumeNode)
-            # res *= labelValue
-            if resFinal is None:
-                resFinal = np.zeros(shape=res.shape)
-            resFinal[res == 1] = labelValue
-            print("segid", labelValue, np.unique(resFinal), np.unique(res))
+        # TODO: mp speed up
+        # TODO: background save?
+        for segment in self.segments:
+            name = segment.GetName()
+            res = slicer.util.arrayFromSegmentBinaryLabelmap(
+                segmentationNode, self.getSegmentId(segment), self._currVolumeNode
+            ).astype("bool")
+            resFinal[res] = catgs[name]
 
-        print("Max of final result", np.unique(resFinal), resFinal.shape)
+        print("Final result ids", np.unique(resFinal))
 
         scanPath = self._currVolumeNode_scanPath.get(self._currVolumeNode)
 
@@ -803,11 +817,14 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         dotPos = scanPath.find(".")
         labelPath = scanPath[:dotPos] + "_label" + scanPath[dotPos:]
         sitk.WriteImage(mask, labelPath)
-        self._scanPaths.remove(scanPath)
-        self._currScanIdx -= 1
+
+        # TODO:
+        # self._scanPaths.remove(scanPath)
+        # self._currScanIdx -= 1
         self.nextScan()
 
         slicer.util.delayDisplay(f"{labelPath.split('/')[-1]} save successfully", autoCloseMsec=1200)
+        print(f"saving took {time.time() - tic}s")
 
     def setSegmentationOpacity(self):
         if self.segmentationNode is None:
