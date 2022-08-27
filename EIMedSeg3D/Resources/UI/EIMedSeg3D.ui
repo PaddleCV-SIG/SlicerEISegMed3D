@@ -31,7 +31,11 @@
       </widget>
      </item>
      <item row="0" column="1">
-      <widget class="ctkPathLineEdit" name="modelPathInput"/>
+      <widget class="ctkPathLineEdit" name="modelPathInput">
+       <property name="showHistoryButton">
+        <bool>false</bool>
+       </property>
+      </widget>
      </item>
      <item row="1" column="0">
       <widget class="QLabel" name="paramPathLabel">
@@ -41,7 +45,11 @@
       </widget>
      </item>
      <item row="1" column="1">
-      <widget class="ctkPathLineEdit" name="paramPathInput"/>
+      <widget class="ctkPathLineEdit" name="paramPathInput">
+       <property name="showHistoryButton">
+        <bool>false</bool>
+       </property>
+      </widget>
      </item>
     </layout>
    </item>
@@ -75,7 +83,7 @@
      <item>
       <widget class="ctkPathLineEdit" name="dataFolderLineEdit">
        <property name="acceptDrops">
-        <bool>true</bool>
+        <bool>false</bool>
        </property>
        <property name="label">
         <string/>
@@ -83,19 +91,21 @@
        <property name="filters">
         <set>ctkPathLineEdit::AllDirs|ctkPathLineEdit::Dirs|ctkPathLineEdit::Drives|ctkPathLineEdit::NoDot|ctkPathLineEdit::NoDotDot|ctkPathLineEdit::Readable</set>
        </property>
+       <property name="currentPath">
+        <string notr="true"/>
+       </property>
        <property name="options">
         <set>ctkPathLineEdit::ReadOnly|ctkPathLineEdit::ShowDirsOnly</set>
+       </property>
+       <property name="showBrowseButton">
+        <bool>true</bool>
+       </property>
+       <property name="showHistoryButton">
+        <bool>false</bool>
        </property>
       </widget>
      </item>
     </layout>
-   </item>
-   <item>
-    <widget class="QPushButton" name="loadScanButton">
-     <property name="text">
-      <string>Load Scans</string>
-     </property>
-    </widget>
    </item>
    <item>
     <layout class="QHBoxLayout" name="prevNextLayout">
