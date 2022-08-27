@@ -14,9 +14,9 @@ import slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
-# import paddle
-# import inference
-# import inference.predictor as predictor
+import paddle
+import inference
+import inference.predictor as predictor
 
 
 #
@@ -303,9 +303,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if osp.exists(osp.join(self._dataFolder, "currScanIdx.txt")):
             self.saveOrReadCurrIdx(saveFlag=False)
         else:
-            self._currScanIdx = None
-
-        self.nextScan()
+            self._currScanIdx = 0
+        self.turnTo()
 
         logging.info(
             f"All scans found under {self._dataFolder} are {','.join([' '+osp.basename(p) for p in self._scanPaths])}"
@@ -314,8 +313,10 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def clearScene(self):
         if self._currVolumeNode is not None:
             slicer.mrmlScene.RemoveNode(self._currVolumeNode)
-        if self._segmentNode is not None:
-            slicer.mrmlScene.RemoveNode(self._segmentNode)
+
+        segmentationNode = self.segmentationNode
+        if segmentationNode is not None:
+            slicer.mrmlScene.RemoveNode(segmentationNode)
 
     def saveOrReadCurrIdx(self, saveFlag=False):
         path = os.path.join(self._dataFolder, "currScanIdx.txt")
@@ -332,13 +333,12 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 "You have marked all the data, and there is no next scan. Please reselect the file path and click the Load Scans button."
             )
             return
-        if self._currScanIdx is None:
-            self._currScanIdx = 0
-        else:
-            if self._currScanIdx + 1 >= len(self._scanPaths):
-                self._currScanIdx -= len(self._scanPaths) - 1
-            self._currScanIdx += 1
 
+        if self._currScanIdx == len(self._scanPaths) - 1:
+            slicer.util.errorDisplay("This is the last scan. No next scan")
+            return
+
+        self._currScanIdx += 1
         self.turnTo()
 
     def prevScan(self):
@@ -347,13 +347,11 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 "You have marked all the data, and there is no next scan. Please reselect the file path and click the Load Scans button."
             )
             return
-        if self._currScanIdx is None:
-            self._currScanIdx = 0
-        else:
-            if self._currScanIdx - 1 < 0:
-                self._currScanIdx += len(self._scanPaths) - 1
-            else:
-                self._currScanIdx -= 1
+        if self._currScanIdx == 0:
+            slicer.util.errorDisplay("This is the first scan. No previous scan")
+            return
+
+        self._currScanIdx -= 1
         self.turnTo()
 
     def turnTo(self):
@@ -418,6 +416,13 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             )
 
     """ category and segmentation management """
+
+    @property
+    def segmentationNode(self):
+        try:
+            return slicer.util.getNode("EIMedSeg3DSegmentation")
+        except slicer.util.MRMLNodeNotFoundException:
+            return None
 
     @property
     def segmentation(self):
@@ -530,48 +535,53 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._syncing_catg = False
 
     def onControlPointAdded(self, observer, eventid):
+        if self.ignorePointListNodeAddEvent:
+            return
         self.ignorePointListNodeAddEvent = True
 
+        # self.ui.embeddedSegmentEditorWidget.setDisabled(True)
+        # 1. get new point pos and type
         posPoints = self.getControlPointsXYZ(self.dgPositivePointListNode, "positive")
         negPoints = self.getControlPointsXYZ(self.dgNegativePointListNode, "negative")
         newPointIndex = observer.GetDisplayNode().GetActiveControlPoint()
         newPointPos = self.getControlPointXYZ(observer, newPointIndex)
         isPositivePoint = False if len(posPoints) == 0 else newPointPos == posPoints[-1]
-        slicer.util.delayDisplay(
-            f"A {'positive' if isPositivePoint else 'negative'} point has been added on {newPointPos}",
-            autoCloseMsec=1200,
-        )
+        # slicer.util.delayDisplay(
+        #     f"A {'positive' if isPositivePoint else 'negative'} point has been added on {newPointPos}",
+        #     autoCloseMsec=1200,
+        # )
 
         with slicer.util.tryWithErrorDisplay("Failed to run inference.", waitCursor=True):
-            segmentation = self._segmentNode.GetSegmentation()
+            segmentation = self.segmentation
             segmentId = self.ui.embeddedSegmentEditorWidget.currentSegmentID()
             segment = segmentation.GetSegment(segmentId)
             print("Current labelvalue: ", segment.GetLabelValue())
 
-            # # TODO: remove
-            # if self._prev_segId is None:
-            #     self._prev_segId = segmentId
-            #     self.set_image()
-            # elif self._prev_segId != segmentId:
-            #     self.set_image()
-            #     self._prev_segId = segmentId
-            # else:
-            #     if self.inference_predictor.original_image is None:
-            #         self.set_image()
-            # paddle.device.cuda.empty_cache()
+            # TODO: remove
+            if self._prev_segId is None:
+                self._prev_segId = segmentId
+                self.set_image()
+            elif self._prev_segId != segmentId:
+                self.set_image()
+                self._prev_segId = segmentId
+            else:
+                if self.inference_predictor.original_image is None:
+                    self.set_image()
+            paddle.device.cuda.empty_cache()
 
             # get current seg mask as numpy
-            res = slicer.util.arrayFromSegmentBinaryLabelmap(self._segmentNode, segmentId, self._currVolumeNode)
+            res = slicer.util.arrayFromSegmentBinaryLabelmap(self.segmentationNode, segmentId, self._currVolumeNode)
             self.ui.progressBar.setValue(10)
 
             # test
-            p = newPointPos
-            p = [p[2], p[1], p[0]]
-            res[p[0] - 10 : p[0] + 10, p[1] - 10 : p[1] + 10, p[2] - 10 : p[2] + 10] = 1
-            mask = res
+            # p = newPointPos
+            # p = [p[2], p[1], p[0]]
+            # mask = np.zeros_like(res)
+            # mask[p[0] - 10 : p[0] + 10, p[1] - 10 : p[1] + 10, p[2] - 10 : p[2] + 10] = 1
+
             # !! predict image for test
 
-            # mask = self.infer_image(newPointPos, isPositivePoint)  # (880, 880, 12) same as res
+            mask = self.infer_image(newPointPos, isPositivePoint)  # (880, 880, 12) same as res
             self.ui.progressBar.setValue(100)
 
             if self.test_iou:
@@ -664,10 +674,10 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         try:
             paddle.device.set_device(self.device)
         except AttributeError:
-            slicer.util.errorDisplay("The model is not loaded, Please press load model first")
+            slicer.util.errorDisplay("Model is not loaded. Please load model first")
             return
 
-        a = time.time()
+        tic = time.time()
         self.prepare_click(click_position, positive_click)
         with paddle.no_grad():
             pred_probs = self.inference_predictor.get_prediction_noclicker(self.clicker)
@@ -692,8 +702,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         Mask.CopyInformation(self.origin)
 
         npy_img = sitk.GetArrayFromImage(Mask).astype("float32")  # 12, 512, 512 DHW
-        b = time.time()
-        print(f"预测结果的形状：{output_data.shape}, 预测时间为 {(b - a) * 1000} ms")  # shape (12, 512, 512) DHW test
+
+        print(f"预测结果的形状：{output_data.shape}, 预测时间为 {(time.time() - tic) * 1000} ms")  # shape (12, 512, 512) DHW test
 
         return npy_img
 
