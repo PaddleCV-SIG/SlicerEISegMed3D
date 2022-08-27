@@ -247,7 +247,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.dgNegativeControlPointPlacementWidget.setNodeColor(qt.QColor(255, 0, 0))
 
     def clearAllPoints(self):
-        self.catgTxt2Segmentation()
         self.ui.dgPositiveControlPointPlacementWidget.deleteAllPoints()
         self.ui.dgNegativeControlPointPlacementWidget.deleteAllPoints()
 
@@ -394,13 +393,12 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # 3. create category label from txt and segmentation
         self.catgTxt2Segmentation()
+        self.catgSegmentation2Txt()
 
         def sync(*args):
-            print("syncing")
-            # BUG: this func get called multiple times when segment name changes
             if self._syncing_catg:
                 return
-            self.catgTxt2Segmentation()
+            self.catgSegmentation2Txt()
 
         self._segmentNode.AddObserver(self._segmentNode.GetContentModifiedEvents().GetValue(5), sync)
 
@@ -419,73 +417,117 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 segmentId=segId, labelValue=segment.GetLabelValue(), name=segment.GetName(), color=segment.GetColor()
             )
 
+    """ category and segmentation management """
+
+    @property
+    def segmentation(self):
+        return slicer.util.getNode("EIMedSeg3DSegmentation").GetSegmentation()
+
+    @property
     def segments(self):
-        segmentationNode = slicer.util.getNode("EIMedSeg3DSegmentation")
-        segmentation = segmentationNode.GetSegmentation()
+        segmentation = self.segmentation
         for segId in segmentation.GetSegmentIDs():
             yield segmentation.GetSegment(segId)
 
+    def getSegmentId(self, segment):
+        segmentation = self.segmentation
+        for segId in segmentation.GetSegmentIDs():
+            if segmentation.GetSegment(segId) == segment:
+                return segId
+
+    def recordCatg(self):
+        """Record current category info from segmentationNode
+
+        Format: {segmentId: name} # note: segmentId is not labelValue
+        """
+        self._prev_catg = {}
+        for segment in self.segments:
+            self._prev_catg[self.getSegmentId(segment)] = segment.GetName()
+
+    def writeCatgToTxt(self, catgs):
+        infos = []
+        for name, labelValue in catgs.items():
+            infos.append([labelValue, name])
+        infos.sort(key=lambda info: info[0])
+        with open(osp.join(self._dataFolder, "labels.txt"), "w") as f:
+            for info in infos:
+                print(f"{info[0]} {info[1]}", file=f)
+
+    def getCatgFromTxt(self):
+        """Parse category info from labels.txt
+
+        Returns:
+            dict: {name: labelValue, ... }
+        """
+        txt_path = osp.join(self._dataFolder, "labels.txt")
+        if not osp.exists(txt_path):
+            return {}
+
+        catgs = {}
+        with open(txt_path, "r") as f:
+            lines = [l.strip() for l in f.readlines() if len(l.strip()) != 0]
+            for info in lines:
+                info = info.split(" ")
+                catgs[info[1]] = int(info[0])
+        return catgs
+
     def catgTxt2Segmentation(self):
         """
-        Sync category info from labels.txt to segmentation provided
+        Sync category name from labels.txt to segmentation, match by labelValue
         - create if missing
-        - correct name, color if segmentation differes from labels.txt
+        - correct name if segmentation differes from labels.txt
 
-        Note: labelValue is not changed in this func
+        Note: Changing labelValue will break the link between segment editor and segmentation visualization. Thus labelValue is not changed in this func.
         """
         if self._syncing_catg:
             return
         self._syncing_catg = True
-        segmentation = slicer.util.getNode("EIMedSeg3DSegmentation").GetSegmentation()
 
         # 1. get catg info from labels.txt
         txt_catgs = self.getCatgFromTxt()
-        labelValue2name = {v["labelValue"]: k for k, v in txt_catgs.items()}
-        # logging.info(f"txt_catgs: {txt_catgs}")
+        labelValue2name = {v: k for k, v in txt_catgs.items()}
 
-        # 2. for catgs in txt and segmentation, synx info
+        # 2. modify segment based on labels.txt
         segmentation_names = set()
 
-        for segment in self.segments():
+        for segment in self.segments:
             labelValue = segment.GetLabelValue()
-            name = segment.GetName()
-            if name in txt_catgs.keys():
-                txt_catg = txt_catgs[name]
-                segment.SetColor(txt_catg["color"])
-                segment.SetColor(txt_catg["color"])  # BUG: why need to set two times... just weird
-                # segment.SetLabelValue(txt_catg["labelValue"])
-            elif labelValue in labelValue2name.keys():
+            if labelValue in labelValue2name.keys():
                 txt_catg = txt_catgs[labelValue2name[labelValue]]
-                segment.SetColor(txt_catg["color"])
                 segment.SetName(labelValue2name[labelValue])
             segmentation_names.add(segment.GetName())
 
         # 3. create segments in txt but not in segmentation
         for name in set(txt_catgs.keys()) - set(segmentation_names):
             txt_catg = txt_catgs[name]
-            segmentation.AddEmptySegment("", name, txt_catg["color"])
-
+            self.segmentation.AddEmptySegment("", name)
+        self.recordCatg()
         self._syncing_catg = False
 
-    def getCatgFromTxt(self):
-        """Parse category info from labels.txt
+    def catgSegmentation2Txt(self):
+        if self._syncing_catg:
+            return
+        self._syncing_catg = True
 
-        Returns:
-            dict: {name: {"labelValue": int, "color": [color_r, color_g, color_b] }, ... } (color is 0~1)
-        """
-        txt_path = osp.join(self._dataFolder, "labels.txt")
-        if not osp.exists(txt_path):
-            return {}
+        catgs = self.getCatgFromTxt()
+        if len(catgs) == 0:
+            maxLabelValue = 0
+        else:
+            maxLabelValue = max([lv for lv in catgs.values()])
 
-        with open(txt_path, "r") as f:
-            lines = f.readlines()
-            catgs = {}
-            for info in lines:
-                info = info.split(" ")
-                info[2:5] = map(int, info[2:5])
-                catgs[info[1]] = {"labelValue": int(info[0]), "color": [c / 255 for c in info[2:5]]}
+        for segment in self.segments:
+            name = segment.GetName()
+            segmentId = self.getSegmentId(segment)
+            if segmentId in self._prev_catg.keys() and self._prev_catg[segmentId] != name:
+                catgs[name] = catgs[self._prev_catg[segmentId]]
+                del catgs[self._prev_catg[segmentId]]
 
-        return catgs
+            if name not in catgs.keys():
+                catgs[name] = maxLabelValue + 1
+                maxLabelValue += 1
+        self.writeCatgToTxt(catgs)
+        self.recordCatg()
+        self._syncing_catg = False
 
     def onControlPointAdded(self, observer, eventid):
         self.ignorePointListNodeAddEvent = True
