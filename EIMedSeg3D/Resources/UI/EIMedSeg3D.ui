@@ -225,7 +225,7 @@
     </widget>
    </item>
    <item>
-    <layout class="QHBoxLayout" name="threshLayout">
+    <layout class="QHBoxLayout" name="opacityLayout">
      <item>
       <widget class="QLabel" name="threshLabel">
        <property name="text">
@@ -234,7 +234,7 @@
       </widget>
      </item>
      <item>
-      <widget class="ctkSliderWidget" name="threshSlider">
+      <widget class="ctkSliderWidget" name="opacitySlider">
        <property name="decimals">
         <number>2</number>
        </property>
