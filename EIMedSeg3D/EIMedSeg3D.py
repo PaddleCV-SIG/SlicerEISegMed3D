@@ -230,10 +230,14 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.dgPositiveControlPointPlacementWidget.setMRMLScene(slicer.mrmlScene)
         self.ui.dgPositiveControlPointPlacementWidget.placeButton().toolTip = "Select positive points"
         self.ui.dgPositiveControlPointPlacementWidget.placeButton().show()
+        self.ui.dgPositiveControlPointPlacementWidget.deleteButton().setFixedWidth(0)
+        self.ui.dgPositiveControlPointPlacementWidget.deleteButton().setFixedHeight(0)
 
         self.ui.dgNegativeControlPointPlacementWidget.setMRMLScene(slicer.mrmlScene)
         self.ui.dgNegativeControlPointPlacementWidget.placeButton().toolTip = "Select negative points"
         self.ui.dgNegativeControlPointPlacementWidget.placeButton().show()
+        self.ui.dgNegativeControlPointPlacementWidget.deleteButton().setFixedWidth(0)
+        self.ui.dgNegativeControlPointPlacementWidget.deleteButton().setFixedHeight(0)
 
         # Segment editor
         self.ui.embeddedSegmentEditorWidget.setMRMLScene(slicer.mrmlScene)
@@ -248,16 +252,10 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # TODO: move to initializeParameterNode
         self.ui.dgPositiveControlPointPlacementWidget.setNodeColor(qt.QColor(0, 255, 0))
         self.ui.dgNegativeControlPointPlacementWidget.setNodeColor(qt.QColor(255, 0, 0))
-        self.hideDeleteButtons()
 
     def clearAllPoints(self):
         self.ui.dgPositiveControlPointPlacementWidget.deleteAllPoints()
         self.ui.dgNegativeControlPointPlacementWidget.deleteAllPoints()
-
-        
-    def hideDeleteButtons(self):
-        self.ui.dgPositiveControlPointPlacementWidget.deleteButton().hide()
-        self.ui.dgNegativeControlPointPlacementWidget.deleteButton().hide()
 
     def init_params(self):
         "init changble parameters here"
@@ -315,7 +313,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         print("All scan paths", self._scanPaths)
 
     def clearScene(self):
-        self.hideDeleteButtons()
         if self._currVolumeNode is not None:
             slicer.mrmlScene.RemoveNode(self._currVolumeNode)
         if self._segmentNode is not None:
@@ -377,7 +374,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # 1. load new scan & preprocess
         image_path = self._scanPaths[self._currScanIdx]
         self._currVolumeNode = slicer.util.loadVolume(image_path)
-        self.hideDeleteButtons()
         self._currVolumeNode_scanPath[self._currVolumeNode] = image_path
 
         # BUG: load image before loading model
@@ -511,7 +507,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         return infor_dict
 
     def onControlPointAdded(self, observer, eventid):
-        self.hideDeleteButtons()
         posPoints = self.getControlPointsXYZ(self.dgPositivePointListNode, "positive")
         negPoints = self.getControlPointsXYZ(self.dgNegativePointListNode, "negative")
 
@@ -894,8 +889,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         This method is called whenever parameter node is changed.
         The module GUI is updated to show the current state of the parameter node.
         """
-        self.hideDeleteButtons()
-
         if self._parameterNode is None or self._updatingGUIFromParameterNode:
             return
 
