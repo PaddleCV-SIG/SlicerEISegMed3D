@@ -2,7 +2,7 @@ import logging
 import os
 import os.path as osp
 import time
-from functools import partial
+import json
 
 import qt
 import ctk
@@ -15,12 +15,47 @@ from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
 # when test, wont use any paddle related funcion
+# TODO: make sure this works
 TEST = True
 if not TEST:
-    import paddle
+    try:
+        import paddle
+    except ModuleNotFoundError as e:
+        if slicer.util.confirmOkCancelDisplay(
+            "This module requires 'paddlepaddle' Python package. Click OK to install it now."
+        ):
+            slicer.util.pip_install("paddlepaddle")
+            import paddle
+
+    try:
+        import paddleseg
+    except ModuleNotFoundError as e:
+        if slicer.util.confirmOkCancelDisplay(
+            "This module requires 'paddleseg' Python package. Click OK to install it now."
+        ):
+            slicer.util.pip_install("paddleseg")
+            import paddle
+
     import inference
     import inference.predictor as predictor
 
+# TODO: get some better color map
+colors = [
+    (0.5019607843137255, 0.6823529411764706, 0.5019607843137255),
+    (0.9450980392156862, 0.8392156862745098, 0.5686274509803921),
+    (0.6941176470588235, 0.4784313725490196, 0.3960784313725490),
+    (0.4352941176470588, 0.7215686274509804, 0.8235294117647058),
+    (0.8470588235294118, 0.3960784313725490, 0.3098039215686274),
+    (0.8666666666666667, 0.5098039215686274, 0.3960784313725490),
+    (0.5647058823529412, 0.9333333333333333, 0.5647058823529412),
+    (0.7529411764705882, 0.4078431372549019, 0.3450980392156862),
+    (0.8627450980392157, 0.9607843137254902, 0.0784313725490196),
+    (0.3058823529411765, 0.2470588235294117, 0.0000000000000000),
+    (1.0000000000000000, 0.9803921568627451, 0.8627450980392157),
+    (0.9019607843137255, 0.8627450980392157, 0.2745098039215685),
+    (0.7843137254901961, 0.7843137254901961, 0.9215686274509803),
+    (0.9803921568627451, 0.9803921568627451, 0.8235294117647058),
+]
 
 #
 # EIMedSeg3D
@@ -154,6 +189,26 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
+    @classmethod
+    def registerPb(cls, pb=None, windowTitle="Processing"):
+        if pb is None:
+            pb = slicer.util.createProgressDialog(windowTitle=windowTitle, autoClose=True)
+        pb.setCancelButtonText("Close")
+        left = 100 - pb.value
+
+        def setPb(percentage):
+            nonlocal pb
+            if percentage == 1:
+                print("Closing pb")
+                pb.value = 100
+                pb.hide()
+                pb.cancel()
+                del pb
+            else:
+                pb.value += int(left * percentage)
+
+        return pb, setPb
+
     def __init__(self, parent=None):
         """
         Called when the user opens the module the first time and the widget is initialized.
@@ -253,18 +308,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.test_iou = False  # the label file need to be set correctly
         self.file_suffix = [".nii", ".nii.gz"]  # files with these suffix will be loaded
         self.device, self.enable_mkldnn = "cpu", True
-
-    def loadModelClicked(self):
-        model_path, param_path = self.ui.modelPathInput.currentPath, self.ui.paramPathInput.currentPath
-        if not model_path or not param_path:
-            slicer.util.errorDisplay("Please set the model_path and parameter path before load model.")
-            return
-
-        self.inference_predictor = predictor.BasePredictor(
-            model_path, param_path, device=self.device, enable_mkldnn=self.enable_mkldnn, **self.predictor_params_
-        )
-
-        slicer.util.delayDisplay("Sucessfully loaded model to {}!".format(self.device), autoCloseMsec=1500)
+        self._currScanIdx, self._finishedPaths = self.getProgress()
 
     def clearScene(self):
         if self._currVolumeNode is not None:
@@ -274,19 +318,11 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if segmentationNode is not None:
             slicer.mrmlScene.RemoveNode(segmentationNode)
 
-    def saveOrReadCurrIdx(self, saveFlag=False):
-        path = os.path.join(self._dataFolder, "currScanIdx.txt")
-        if saveFlag:
-            with open(osp.join(self._dataFolder, path), "w") as f:
-                f.write(str(self._currScanIdx + 1))
-        else:
-            with open(osp.join(self._dataFolder, path), "r") as f:
-                self._currScanIdx = int(f.read())
-
     """ load/change scan related """
 
     def loadScans(self):
         """Get all the scans under a folder and turn to the first one"""
+        pb, setPb = EIMedSeg3DWidget.registerPb(windowTitle="Loading Scans")
 
         # 1. ensure valid input
         dataFolder = self.ui.dataFolderLineEdit.currentPath
@@ -300,67 +336,97 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.ui.dataFolderLineEdit.addCurrentPathToHistory()
         self.clearScene()
+        setPb(0.2)
 
         # 2. list files in assigned directory
         self._dataFolder = dataFolder
         paths = [p for p in os.listdir(self._dataFolder) if p[p.find(".") :] in self.file_suffix]
         paths = [p for p in paths if p.split(".")[0][-len("_label") :] != "_label"]
+
+        if len(paths) == 0:
+            pb.value = 100
+            slicer.util.errorDisplay(
+                f"No file ending with {' or '.join(self.file_suffix)} is found under {self._dataFolder}.\nDid you chose the wrong folder?"
+            )
+            return
+        setPb(0.8)
+        pb.labelText = f"Found {len(paths)} scans in folder {self._dataFolder}"
+
         paths.sort()
         self._scanPaths = [osp.join(self._dataFolder, p) for p in paths]
 
-        slicer.util.delayDisplay(
-            f"Found {len(self._scanPaths)} scans in folder {self._dataFolder}",
-            autoCloseMsec=1200,
-        )
+        self._currScanIdx, self._finishedPaths = self.getProgress()
+        if len(set(self._scanPaths) - set(self._finishedPaths)) == 0:
+            slicer.util.delayDisplay(f"All {len(self._scanPaths)} scans have been annotated!", 4000)
+            setPb(1)
+            return
 
-        if osp.exists(osp.join(self._dataFolder, "currScanIdx.txt")):
-            self.saveOrReadCurrIdx(saveFlag=False)
-        else:
-            self._currScanIdx = 0
-        self.turnTo()
+        self._currScanIdx -= 1
+        found = self.nextScan(pb=pb, silentFail=True)
+        if not found:
+            self._currScanIdx += 2
+            self.prevScan(pb=pb)
 
         logging.info(
-            f"All scans found under {self._dataFolder} are {','.join([' '+osp.basename(p) for p in self._scanPaths])}"
+            f"All scans found under {self._dataFolder} are{','.join([' '+osp.basename(p) for p in self._scanPaths])}"
         )
+        pb.value = 100
 
-    def nextScan(self):
+    def nextScan(self, pb=None, silentFail=False):
+        if isinstance(pb, bool):
+            pb = None
         skipped = False
+        orig_idx = self._currScanIdx
         while True:
-            if self._currScanIdx == len(self._scanPaths) - 1:
-                slicer.util.errorDisplay(f"This is the last {'unannotated' if skipped else ''} scan. No next scan")
-                return
+            if self._currScanIdx >= len(self._scanPaths) - 1:
+                self._currScanIdx = orig_idx
+                if not silentFail:
+                    slicer.util.errorDisplay(f"This is the last{' unannotated ' if skipped else ' '}scan. No next scan")
+                return False
             self._currScanIdx += 1
             if self._scanPaths[self._currScanIdx] not in self._finishedPaths:
                 break
             skipped = True
 
         self._lastTurnNextScan = True
-        self.turnTo()
+        self.turnTo(pb)
+        return True
 
-    def prevScan(self):
+    def prevScan(self, pb=None, silentFail=False):
+        if isinstance(pb, bool):
+            pb = None
         skipped = False
+        orig_idx = self._currScanIdx
         while True:
-            if self._currScanIdx == 0:
-                slicer.util.errorDisplay(f"This is the first {'unannotated'if skipped else '' } scan. No previous scan")
-                return
+            if self._currScanIdx <= 0:
+                self._currScanIdx = orig_idx
+                if not silentFail:
+                    slicer.util.errorDisplay(
+                        f"This is the first{' unannotated 'if skipped else ' ' }scan. No previous scan"
+                    )
+                return False
             self._currScanIdx -= 1
             if self._scanPaths[self._currScanIdx] not in self._finishedPaths:
                 break
             skipped = True
 
         self._lastTurnNextScan = False
-        self.turnTo()
+        self.turnTo(pb)
+        return True
 
-    def turnTo(self):
+    def turnTo(self, pb=None):
         """
         Turn to the self._currScanIdx th scan, load scan and label
         """
         # 0. ensure valid status and clear scene
+        pb, setPb = EIMedSeg3DWidget.registerPb(pb, windowTitle="Loading scan and label")
+        pb.labelText = "Performing checks"
+        setPb(0.1)
+
         if len(self._scanPaths) == 0:
             slicer.util.errorDisplay("No scan found, please load scans first.", autoCloseMsec=2000)
             return
         logging.info(f"Turning to the {self._currScanIdx}th scan, path is {self._scanPaths[self._currScanIdx]}")
-        print("self._finishedPaths", self._finishedPaths)
 
         self.ui.dgPositiveControlPointPlacementWidget.setEnabled(False)
         self.ui.dgNegativeControlPointPlacementWidget.setEnabled(False)
@@ -368,10 +434,14 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.clearScene()  # remove the volume and segmentation node
 
         # 1. load new scan & preprocess
+        pb.labelText = "Loading scan"
         image_path = self._scanPaths[self._currScanIdx]
         self._currVolumeNode = slicer.util.loadVolume(image_path)
+        self._currVolumeNode.SetName(osp.basename(image_path).split(".")[0])
+        setPb(0.8)
 
         # 2. load segmentation or create an empty one
+        pb.labelText = "Loading segmentation"
         dot_pos = image_path.find(".")
         self._currLabelPath = image_path[:dot_pos] + "_label" + image_path[dot_pos:]
         if osp.exists(self._currLabelPath):
@@ -382,16 +452,19 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         segmentNode.SetName("EIMedSeg3DSegmentation")
         segmentNode.SetReferenceImageGeometryParameterFromVolumeNode(self._currVolumeNode)
 
-        # 3. create category label from txt and segmentation
-        self.catgTxt2Segmentation()
-        self.catgSegmentation2Txt()
-
         def sync(*args):
             if self._syncingCatg:
                 return
             self.catgSegmentation2Txt()
 
         segmentNode.AddObserver(segmentNode.GetContentModifiedEvents().GetValue(5), sync)
+        setPb(0.9)
+
+        # 3. create category label from txt and segmentation
+        pb.labelText = "Finishing loading"
+        self.catgTxt2Segmentation()
+        self.catgSegmentation2Txt()
+        self.saveProgress()
 
         # 4. set the editor as current result.
         self.ui.embeddedSegmentEditorWidget.setSegmentationNode(segmentNode)
@@ -403,6 +476,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # 5. set image
         if not TEST:
             self.prepImage()
+        setPb(1)
 
     """ category and segmentation management """
 
@@ -423,6 +497,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     @property
     def segments(self):
         segmentation = self.segmentation
+        if segmentation is None:
+            return []
         for segId in segmentation.GetSegmentIDs():
             yield segmentation.GetSegment(segId)
 
@@ -430,7 +506,10 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def configPath(self):
         if self._dataFolder is None:
             return None
-        return osp.join(self._dataFolder, "EIMedSeg3D.json")
+        path = osp.join(self._dataFolder, "EIMedSeg3D.json")
+        if not osp.exists(path):
+            return None
+        return path
 
     def getSegmentId(self, segment):
         segmentation = self.segmentation
@@ -504,6 +583,17 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         for name in set(txt_catgs.keys()) - set(segmentation_names):
             txt_catg = txt_catgs[name]
             self.segmentation.AddEmptySegment("", name)
+
+        # 4. set colors
+        nameAndSegId = []
+        segmentation = self.segmentation
+        for segId in segmentation.GetSegmentIDs():
+            nameAndSegId.append([segmentation.GetSegment(segId).GetName(), segId])
+        nameAndSegId.sort(key=lambda pair: pair[0])
+
+        for idx, (name, segId) in enumerate(nameAndSegId):
+            segmentation.GetSegment(segId).SetColor(colors[idx % len(colors)])
+
         self.recordCatg()
         self._syncingCatg = False
 
@@ -536,16 +626,30 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def saveProgress(self):
         configPath = self.configPath
-        if osp.exists(configPath):
+        if configPath is None:
+            config = {}
+        else:
             config = json.loads(open(configPath, "r").read())
-        print(config)
+        relpath = lambda path: osp.relpath(path, self._dataFolder)
+        config["finished"] = [relpath(p) for p in self._finishedPaths]
+        config["leftOff"] = relpath(self._scanPaths[self._currScanIdx])
+
+        print("config", config)
 
         with open(configPath, "w") as f:
             print(json.dumps(config), file=f)
 
     def getProgress(self):
-        if not osp.exists(osp.join(self._dataFolder, "EIMedSeg3D.json")):
-            return
+        configPath = self.configPath
+        if configPath is None:
+            return 0, []
+
+        config = json.loads(open(configPath, "r").read())
+        leftOffIdx = 0
+        for idx, p in enumerate(self._scanPaths):
+            if p == osp.join(self._dataFolder, config["leftOff"]):
+                leftOffIdx = idx
+        return leftOffIdx, [osp.join(self._dataFolder, p) for p in config["finished"]]
 
     """ control point related """
 
@@ -653,6 +757,18 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._usingInteractive = False
 
     """ inference related """
+
+    def loadModelClicked(self):
+        model_path, param_path = self.ui.modelPathInput.currentPath, self.ui.paramPathInput.currentPath
+        if not model_path or not param_path:
+            slicer.util.errorDisplay("Please set the model_path and parameter path before load model.")
+            return
+
+        self.inference_predictor = predictor.BasePredictor(
+            model_path, param_path, device=self.device, enable_mkldnn=self.enable_mkldnn, **self.predictor_params_
+        )
+
+        slicer.util.delayDisplay("Sucessfully loaded model to {}!".format(self.device), autoCloseMsec=1500)
 
     def onControlPointAdded(self, observer, eventid):
         if self._addingControlPoint:
@@ -807,10 +923,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if self._usingInteractive:
             self.exitInteractiveMode()
         self.saveSegmentation()
-
-        # self._finishedPaths.append(self._scanPaths[self._currScanIdx])
-        # print("self._finishedPaths", self._finishedPaths)
-
+        self._finishedPaths.append(self._scanPaths[self._currScanIdx])
+        self.saveProgress()
         if self._lastTurnNextScan:
             self.nextScan()
         else:
@@ -832,7 +946,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         for segment in self.segments:
             name = segment.GetName()
-            print(dir(segment))
             segment.SetLabelValue(catgs[name])
 
             # res = slicer.util.arrayFromSegmentBinaryLabelmap(
@@ -861,6 +974,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         slicer.util.delayDisplay(f"{labelPath.split('/')[-1]} save successfully", autoCloseMsec=1200)
         print(f"saving took {time.time() - tic}s")
+
+    """ display related """
 
     def setSegmentationOpacity(self):
         if self.segmentationNode is None:
@@ -922,7 +1037,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         # Parameter node will be reset, do not use it anymore
         self._currVolumeNode = None
-        self.saveOrReadCurrIdx(saveFlag=True)
+        # self.saveOrReadCurrIdx(saveFlag=True)
 
         self.setParameterNode(None)
         self.resetPointList(
