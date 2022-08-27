@@ -4,23 +4,19 @@ import os.path as osp
 import time
 from functools import partial
 
-# import sitkUtils
 import qt
 import ctk
 import vtk
 import numpy as np
-
-# import nibabel as nib
 import SimpleITK as sitk
-import slicer
 
+import slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
-import paddle
-
-import inference
-import inference.predictor as predictor
+# import paddle
+# import inference
+# import inference.predictor as predictor
 
 
 #
@@ -281,25 +277,29 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def loadScans(self):
         """Get all the scans under a folder and turn to the first one"""
+
+        # 1. ensure valid input
         dataFolder = self.ui.dataFolderLineEdit.currentPath
         if dataFolder is None or len(dataFolder) == 0:
-            # test remove
-            dataFolder = os.path.join(os.path.dirname(os.path.realpath(__file__)), os.path.join("test_MR", "Case2.nii"))
             slicer.util.delayDisplay("Please select a Data Folder first!", autoCloseMsec=5000)
             return
 
+        if not osp.exists(dataFolder):
+            slicer.util.delayDisplay(f"The Data Folder( {dataFolder} ) doesn't exist!", autoCloseMsec=2000)
+            return
+
+        self.ui.dataFolderLineEdit.addCurrentPathToHistory()
         self.clearScene()
 
-        # list files in assigned directory
+        # 2. list files in assigned directory
         self._dataFolder = dataFolder
-        paths = os.listdir(self._dataFolder)
-        paths = sorted([s for s in paths if s.split(".")[0][-len("_label") :] != "_label"])
-        paths = [osp.join(self._dataFolder, s) for s in paths]
-
-        self._scanPaths = [p for p in paths if p[p.find(".") :] in self.file_suffix]
+        paths = [p for p in os.listdir(self._dataFolder) if p[p.find(".") :] in self.file_suffix]
+        paths = [p for p in paths if p.split(".")[0][-len("_label") :] != "_label"]
+        paths.sort()
+        self._scanPaths = [osp.join(self._dataFolder, p) for p in paths]
 
         slicer.util.delayDisplay(
-            "Successfully loaded {} scans! \nPlease press on next scan to show them!".format(len(self._scanPaths)),
+            f"Successfully loaded {len(self._scanPaths)} scans!",
             autoCloseMsec=3000,
         )
 
@@ -309,8 +309,10 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self._currScanIdx = None
 
         self.nextScan()
-        # test
-        print("All scan paths", self._scanPaths)
+
+        logging.info(
+            f"All scans found under {self._dataFolder} are {','.join([' '+osp.basename(p) for p in self._scanPaths])}"
+        )
 
     def clearScene(self):
         self.hideDeleteButtons()
