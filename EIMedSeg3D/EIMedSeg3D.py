@@ -18,7 +18,6 @@ from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
 import paddle
-from paddle.inference import create_predictor, Config
 
 import inference
 import inference.predictor as predictor
