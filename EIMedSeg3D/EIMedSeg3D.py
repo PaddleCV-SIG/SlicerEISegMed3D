@@ -163,24 +163,25 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.logic = None
         self._parameterNode = None
-        self._currVolumeNode = None
-        self._scanPaths = []
+        # data var
         self._dataFolder = None
+        self._scanPaths = []
+        self._finishedPaths = []
         self._currScanIdx = None
-        # self._segmentEditor = {}
-        self._currVolumeNode_scanPath = {}
-        self._prev_segId = None
-        self._syncing_catg = False
-        self._using_interactive = False
-
-        self._updatingGUIFromParameterNode = False
-        self._endImportProcessing = False
-
+        self._currVolumeNode = None
         self.dgPositivePointListNode = None
         self.dgPositivePointListNodeObservers = []
         self.dgNegativePointListNode = None
         self.dgNegativePointListNodeObservers = []
-        self.ignorePointListNodeAddEvent = False
+
+        # status var
+        self._syncingCatg = False
+        self._usingInteractive = False
+        self._updatingGUIFromParameterNode = False
+        self._endImportProcessing = False
+        self._addingControlPoint = False
+        self._lastTurnNextScan = True
+
         self.init_params()
 
     def setup(self):
@@ -323,30 +324,31 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         )
 
     def nextScan(self):
-        if len(self._scanPaths) == 0:
-            slicer.util.errorDisplay(
-                "You have marked all the data, and there is no next scan. Please reselect the file path and click the Load Scans button."
-            )
-            return
+        skipped = False
+        while True:
+            if self._currScanIdx == len(self._scanPaths) - 1:
+                slicer.util.errorDisplay(f"This is the last {'unannotated' if skipped else ''} scan. No next scan")
+                return
+            self._currScanIdx += 1
+            if self._scanPaths[self._currScanIdx] not in self._finishedPaths:
+                break
+            skipped = True
 
-        if self._currScanIdx == len(self._scanPaths) - 1:
-            slicer.util.errorDisplay("This is the last scan. No next scan")
-            return
-
-        self._currScanIdx += 1
+        self._lastTurnNextScan = True
         self.turnTo()
 
     def prevScan(self):
-        if len(self._scanPaths) == 0:
-            slicer.util.errorDisplay(
-                "You have marked all the data, and there is no next scan. Please reselect the file path and click the Load Scans button."
-            )
-            return
-        if self._currScanIdx == 0:
-            slicer.util.errorDisplay("This is the first scan. No previous scan")
-            return
+        skipped = False
+        while True:
+            if self._currScanIdx == 0:
+                slicer.util.errorDisplay(f"This is the first {'unannotated'if skipped else '' } scan. No previous scan")
+                return
+            self._currScanIdx -= 1
+            if self._scanPaths[self._currScanIdx] not in self._finishedPaths:
+                break
+            skipped = True
 
-        self._currScanIdx -= 1
+        self._lastTurnNextScan = False
         self.turnTo()
 
     def turnTo(self):
@@ -355,8 +357,10 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         # 0. ensure valid status and clear scene
         if len(self._scanPaths) == 0:
-            slicer.util.delayDisplay("No scan found, please load scans first.", autoCloseMsec=2000)
+            slicer.util.errorDisplay("No scan found, please load scans first.", autoCloseMsec=2000)
             return
+        logging.info(f"Turning to the {self._currScanIdx}th scan, path is {self._scanPaths[self._currScanIdx]}")
+        print("self._finishedPaths", self._finishedPaths)
 
         self.ui.dgPositiveControlPointPlacementWidget.setEnabled(False)
         self.ui.dgNegativeControlPointPlacementWidget.setEnabled(False)
@@ -366,7 +370,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # 1. load new scan & preprocess
         image_path = self._scanPaths[self._currScanIdx]
         self._currVolumeNode = slicer.util.loadVolume(image_path)
-        self._currVolumeNode_scanPath[self._currVolumeNode] = image_path  # TODO: remove
 
         # 2. load segmentation or create an empty one
         dot_pos = image_path.find(".")
@@ -384,7 +387,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.catgSegmentation2Txt()
 
         def sync(*args):
-            if self._syncing_catg:
+            if self._syncingCatg:
                 return
             self.catgSegmentation2Txt()
 
@@ -422,6 +425,12 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         segmentation = self.segmentation
         for segId in segmentation.GetSegmentIDs():
             yield segmentation.GetSegment(segId)
+
+    @property
+    def configPath(self):
+        if self._dataFolder is None:
+            return None
+        return osp.join(self._dataFolder, "EIMedSeg3D.json")
 
     def getSegmentId(self, segment):
         segmentation = self.segmentation
@@ -473,9 +482,9 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         Note: Changing labelValue will break the link between segment editor and segmentation visualization. Thus labelValue is not changed in this func.
         """
-        if self._syncing_catg:
+        if self._syncingCatg:
             return
-        self._syncing_catg = True
+        self._syncingCatg = True
 
         # 1. get catg info from labels.txt
         txt_catgs = self.getCatgFromTxt()
@@ -496,12 +505,12 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             txt_catg = txt_catgs[name]
             self.segmentation.AddEmptySegment("", name)
         self.recordCatg()
-        self._syncing_catg = False
+        self._syncingCatg = False
 
     def catgSegmentation2Txt(self):
-        if self._syncing_catg:
+        if self._syncingCatg:
             return
-        self._syncing_catg = True
+        self._syncingCatg = True
 
         catgs = self.getCatgFromTxt()
         if len(catgs) == 0:
@@ -521,7 +530,22 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 maxLabelValue += 1
         self.writeCatgToTxt(catgs)
         self.recordCatg()
-        self._syncing_catg = False
+        self._syncingCatg = False
+
+    """ progress related """
+
+    def saveProgress(self):
+        configPath = self.configPath
+        if osp.exists(configPath):
+            config = json.loads(open(configPath, "r").read())
+        print(config)
+
+        with open(configPath, "w") as f:
+            print(json.dumps(config), file=f)
+
+    def getProgress(self):
+        if not osp.exists(osp.join(self._dataFolder, "EIMedSeg3D.json")):
+            return
 
     """ control point related """
 
@@ -601,7 +625,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 pointListNode.RemoveObserver(observer)
 
     def enterInteractiveMode(self):
-        if self._using_interactive:
+        if self._usingInteractive:
             return
 
         segmentation = self.segmentation
@@ -619,21 +643,23 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.setImage()
         self.clicker = Clicker()
         self.ui.embeddedSegmentEditorWidget.setDisabled(True)
-        self._using_interactive = True
+        self._usingInteractive = True
 
     def exitInteractiveMode(self):
         self.ui.dgPositiveControlPointPlacementWidget.deleteAllPoints()
         self.ui.dgNegativeControlPointPlacementWidget.deleteAllPoints()
 
         self.ui.embeddedSegmentEditorWidget.setDisabled(False)
-        self._using_interactive = False
+        self._usingInteractive = False
+
+    """ inference related """
 
     def onControlPointAdded(self, observer, eventid):
-        if self.ignorePointListNodeAddEvent:
+        if self._addingControlPoint:
             return
-        self.ignorePointListNodeAddEvent = True
+        self._addingControlPoint = True
 
-        if not self._using_interactive:
+        if not self._usingInteractive:
             self.enterInteractiveMode()
 
         # 1. get new point pos and type
@@ -679,7 +705,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 iou = self.get_iou(label, mask, newPointPos)
                 print("Current IOU is {}".format(iou))
 
-        self.ignorePointListNodeAddEvent = False
+        self._addingControlPoint = False
 
     def get_iou(self, gt_mask, pred_mask, newPointPos, ignore_label=-1):
         ignore_gt_mask_inv = gt_mask != ignore_label
@@ -775,53 +801,63 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.clicker.add_click(click)
         print("####################### clicker length", len(self.clicker.clicks_list))
 
+    """ saving related """
+
     def finishScan(self):
-        if self._using_interactive:
+        if self._usingInteractive:
             self.exitInteractiveMode()
         self.saveSegmentation()
 
+        # self._finishedPaths.append(self._scanPaths[self._currScanIdx])
+        # print("self._finishedPaths", self._finishedPaths)
+
+        if self._lastTurnNextScan:
+            self.nextScan()
+        else:
+            self.prevScan()
+
     def saveSegmentation(self):
         """
-        save the file to the current path
+        save segmentation mask to self._dataFolder
         """
         tic = time.time()
-        # 1. generate final segmentation mask
+        # 1. generate final segmentation mask np
         catgs = self.getCatgFromTxt()
         segmentationNode = self.segmentationNode
         segmentation = segmentationNode.GetSegmentation()
-        size = self._currVolumeNode.GetImageData().GetDimensions()
-        size = [size[2], size[1], size[0]]
-        resFinal = np.zeros(size)
-        print("resFinal.shape", resFinal.shape)
+        # imageData = self._currVolumeNode.GetImageData()
+        # size = imageData.GetDimensions()
+        # size = [size[2], size[1], size[0]]
+        # resFinal = np.zeros(size)
 
-        # TODO: mp speed up
-        # TODO: background save?
         for segment in self.segments:
             name = segment.GetName()
-            res = slicer.util.arrayFromSegmentBinaryLabelmap(
-                segmentationNode, self.getSegmentId(segment), self._currVolumeNode
-            ).astype("bool")
-            resFinal[res] = catgs[name]
+            print(dir(segment))
+            segment.SetLabelValue(catgs[name])
 
-        print("Final result ids", np.unique(resFinal))
+            # res = slicer.util.arrayFromSegmentBinaryLabelmap(
+            #     segmentationNode, self.getSegmentId(segment), self._currVolumeNode
+            # ).astype("bool")
+            # resFinal[res] = catgs[name]
 
-        scanPath = self._currVolumeNode_scanPath.get(self._currVolumeNode)
+        # print("Final result ids", np.unique(resFinal))
 
-        origin = sitk.ReadImage(scanPath)
-        mask = sitk.GetImageFromArray(resFinal)
-        mask.SetSpacing(origin.GetSpacing())
-        mask.SetOrigin(origin.GetOrigin())
-        mask.SetDirection(origin.GetDirection())
-        mask = sitk.Cast(mask, sitk.sitkUInt8)
+        scanPath = self._scanPaths[self._currScanIdx]
 
+        # 2. build segmentation file from np mask
+        # origin = sitk.ReadImage(scanPath)
+        # mask = sitk.GetImageFromArray(resFinal)
+        # mask.SetSpacing(origin.GetSpacing())
+        # mask.SetOrigin(origin.GetOrigin())
+        # mask.SetDirection(origin.GetDirection())
+        # mask = sitk.Cast(mask, sitk.sitkUInt8)
+
+        # 3. save to disk
         dotPos = scanPath.find(".")
         labelPath = scanPath[:dotPos] + "_label" + scanPath[dotPos:]
-        sitk.WriteImage(mask, labelPath)
+        slicer.util.saveNode(segmentationNode, labelPath)
 
-        # TODO:
-        # self._scanPaths.remove(scanPath)
-        # self._currScanIdx -= 1
-        self.nextScan()
+        # sitk.WriteImage(mask, labelPath)
 
         slicer.util.delayDisplay(f"{labelPath.split('/')[-1]} save successfully", autoCloseMsec=1200)
         print(f"saving took {time.time() - tic}s")
