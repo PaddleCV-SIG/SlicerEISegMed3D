@@ -254,7 +254,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.dgPositiveControlPointPlacementWidget.deleteAllPoints()
         self.ui.dgNegativeControlPointPlacementWidget.deleteAllPoints()
 
-        
     def hideDeleteButtons(self):
         self.ui.dgPositiveControlPointPlacementWidget.deleteButton().hide()
         self.ui.dgNegativeControlPointPlacementWidget.deleteButton().hide()
