@@ -14,9 +14,9 @@ import slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
-# import paddle
-# import inference
-# import inference.predictor as predictor
+import paddle
+import inference
+import inference.predictor as predictor
 
 
 #
