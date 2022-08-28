@@ -248,12 +248,12 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # button, slider
         self.ui.loadModelButton.connect("clicked(bool)", self.loadModelClicked)
-        self.ui.loadScanButton.connect("clicked(bool)", self.loadScans)
         self.ui.nextScanButton.connect("clicked(bool)", lambda p: self.nextScan())
         self.ui.prevScanButton.connect("clicked(bool)", lambda p: self.prevScan())
         self.ui.finishScanButton.connect("clicked(bool)", self.finishScan)
         self.ui.finishSegmentButton.connect("clicked(bool)", self.exitInteractiveMode)
         self.ui.opacitySlider.connect("valueChanged(double)", self.setSegmentationOpacity)
+        self.ui.dataFolderButton.connect("directoryChanged(QString)", self.loadScans)
 
         # positive/negative control point
         self.ui.dgPositiveControlPointPlacementWidget.setMRMLScene(slicer.mrmlScene)
@@ -353,12 +353,11 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     """ load/change scan related """
 
-    def loadScans(self):
+    def loadScans(self, dataFolder):
         """Get all the scans under a folder and turn to the first one"""
         self.initPb("Making sure input valid", "Loading scans")
 
         # 1. ensure valid input
-        dataFolder = self.ui.dataFolderLineEdit.currentPath
         if dataFolder is None or len(dataFolder) == 0:
             slicer.util.delayDisplay("Please select a Data Folder first!", autoCloseMsec=5000)
             return
@@ -367,7 +366,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             slicer.util.delayDisplay(f"The Data Folder( {dataFolder} ) doesn't exist!", autoCloseMsec=2000)
             return
 
-        self.ui.dataFolderLineEdit.addCurrentPathToHistory()
         self.clearScene()
 
         self.setPb(0.2, "Searching for scans")

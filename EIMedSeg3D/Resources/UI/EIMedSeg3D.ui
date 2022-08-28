@@ -73,27 +73,7 @@
       </widget>
      </item>
      <item>
-      <widget class="ctkPathLineEdit" name="dataFolderLineEdit">
-       <property name="acceptDrops">
-        <bool>true</bool>
-       </property>
-       <property name="label">
-        <string/>
-       </property>
-       <property name="filters">
-        <set>ctkPathLineEdit::AllDirs|ctkPathLineEdit::Dirs|ctkPathLineEdit::Drives|ctkPathLineEdit::NoDot|ctkPathLineEdit::NoDotDot|ctkPathLineEdit::Readable</set>
-       </property>
-       <property name="options">
-        <set>ctkPathLineEdit::ReadOnly|ctkPathLineEdit::ShowDirsOnly</set>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="loadScanButton">
-       <property name="text">
-        <string>Load</string>
-       </property>
-      </widget>
+      <widget class="ctkDirectoryButton" name="dataFolderButton"/>
      </item>
     </layout>
    </item>
@@ -307,6 +287,11 @@
   </layout>
  </widget>
  <customwidgets>
+  <customwidget>
+   <class>ctkDirectoryButton</class>
+   <extends>QWidget</extends>
+   <header>ctkDirectoryButton.h</header>
+  </customwidget>
   <customwidget>
    <class>ctkPathLineEdit</class>
    <extends>QWidget</extends>
