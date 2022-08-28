@@ -266,24 +266,6 @@
     </layout>
    </item>
    <item>
-    <layout class="QHBoxLayout" name="progressLayout">
-     <item>
-      <widget class="QLabel" name="progressLabel">
-       <property name="text">
-        <string>Inference Progress:</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QProgressBar" name="progressBar">
-       <property name="value">
-        <number>0</number>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </item>
-   <item>
     <widget class="Line" name="line">
      <property name="orientation">
       <enum>Qt::Horizontal</enum>

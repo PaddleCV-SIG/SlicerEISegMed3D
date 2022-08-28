@@ -192,18 +192,18 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     @classmethod
     def registerPb(cls, pb=None, windowTitle="Processing"):
         if pb is None:
-            pb = slicer.util.createProgressDialog(windowTitle=windowTitle, autoClose=True)
+            pb = slicer.util.createProgressDialog(windowTitle=windowTitle)
         pb.setCancelButtonText("Close")
+        pb.setAutoClose(True)
         left = 100 - pb.value
 
         def setPb(percentage):
             nonlocal pb
-            if percentage == 1:
-                print("Closing pb")
+            nonlocal left
+            if percentage == 1 and pb.value != 100:
                 pb.value = 100
-                pb.hide()
-                pb.cancel()
-                del pb
+                pb.reset()
+                pb.close()
             else:
                 pb.value += int(left * percentage)
 
@@ -268,8 +268,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # button, slider
         self.ui.loadModelButton.connect("clicked(bool)", self.loadModelClicked)
         self.ui.loadScanButton.connect("clicked(bool)", self.loadScans)
-        self.ui.nextScanButton.connect("clicked(bool)", self.nextScan)
-        self.ui.prevScanButton.connect("clicked(bool)", self.prevScan)
+        self.ui.nextScanButton.connect("clicked(bool)", lambda p: self.nextScan())
+        self.ui.prevScanButton.connect("clicked(bool)", lambda p: self.prevScan())
         self.ui.finishScanButton.connect("clicked(bool)", self.finishScan)
         self.ui.finishSegmentButton.connect("clicked(bool)", self.exitInteractiveMode)
         self.ui.opacitySlider.connect("valueChanged(double)", self.setSegmentationOpacity)
@@ -370,11 +370,9 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         logging.info(
             f"All scans found under {self._dataFolder} are{','.join([' '+osp.basename(p) for p in self._scanPaths])}"
         )
-        pb.value = 100
+        # setPb(1)
 
     def nextScan(self, pb=None, silentFail=False):
-        if isinstance(pb, bool):
-            pb = None
         skipped = False
         orig_idx = self._currScanIdx
         while True:
@@ -393,8 +391,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         return True
 
     def prevScan(self, pb=None, silentFail=False):
-        if isinstance(pb, bool):
-            pb = None
         skipped = False
         orig_idx = self._currScanIdx
         while True:
@@ -431,6 +427,10 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.dgPositiveControlPointPlacementWidget.setEnabled(False)
         self.ui.dgNegativeControlPointPlacementWidget.setEnabled(False)
 
+        if self.segmentation is not None:
+            self.saveSegmentation()
+        if self._usingInteractive:
+            self.exitInteractiveMode()
         self.clearScene()  # remove the volume and segmentation node
 
         # 1. load new scan & preprocess
@@ -476,7 +476,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # 5. set image
         if not TEST:
             self.prepImage()
-        setPb(1)
+        pb.value = 100
+        # setPb(1)
 
     """ category and segmentation management """
 
@@ -506,10 +507,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def configPath(self):
         if self._dataFolder is None:
             return None
-        path = osp.join(self._dataFolder, "EIMedSeg3D.json")
-        if not osp.exists(path):
-            return None
-        return path
+        return osp.join(self._dataFolder, "EIMedSeg3D.json")
 
     def getSegmentId(self, segment):
         segmentation = self.segmentation
@@ -626,7 +624,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def saveProgress(self):
         configPath = self.configPath
-        if configPath is None:
+        if not osp.exists(configPath):
             config = {}
         else:
             config = json.loads(open(configPath, "r").read())
@@ -634,14 +632,12 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         config["finished"] = [relpath(p) for p in self._finishedPaths]
         config["leftOff"] = relpath(self._scanPaths[self._currScanIdx])
 
-        print("config", config)
-
         with open(configPath, "w") as f:
             print(json.dumps(config), file=f)
 
     def getProgress(self):
         configPath = self.configPath
-        if configPath is None:
+        if configPath is None or not osp.exists(configPath):
             return 0, []
 
         config = json.loads(open(configPath, "r").read())
@@ -774,9 +770,12 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if self._addingControlPoint:
             return
         self._addingControlPoint = True
+        pb, setPb = EIMedSeg3DWidget.registerPb(windowTitle="Inference Progress")
 
         if not self._usingInteractive:
+            pb.labelText = "Entering interactive mode"
             self.enterInteractiveMode()
+        setPb(0.1)
 
         # 1. get new point pos and type
         posPoints = self.getControlPointsXYZ(self.dgPositivePointListNode, "positive")
@@ -790,13 +789,12 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         segmentation = self.segmentation
         segmentId = self.ui.embeddedSegmentEditorWidget.currentSegmentID()
         segment = segmentation.GetSegment(segmentId)
+        setPb(0.2)
 
         print("Current segment: ", self.getSegmentId(segment), segment.GetName(), segment.GetLabelValue())
 
         with slicer.util.tryWithErrorDisplay("Failed to run inference.", waitCursor=True):
-            # get current seg mask as numpy
-            self.ui.progressBar.setValue(10)
-
+            pb.labelText = "Running Inference"
             # # predict image for test
             if TEST:
                 p = newPointPos
@@ -807,20 +805,20 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             else:
                 paddle.device.cuda.empty_cache()
                 mask = self.infer_image(newPointPos, isPositivePoint)  # (880, 880, 12) same as res
+            setPb(0.9)
+            pb.labelText = "Wrapping up"
 
             # set new numpy mask to segmentation
             slicer.util.updateSegmentBinaryLabelmapFromArray(
                 mask, self.segmentationNode, segmentId, self._currVolumeNode
             )
 
-            self.ui.progressBar.setValue(100)
-
             if self.test_iou:
                 label = sitk.ReadImage(self._currLabelPath)
                 label = sitk.GetArrayFromImage(label).astype("int32")
                 iou = self.get_iou(label, mask, newPointPos)
                 print("Current IOU is {}".format(iou))
-
+        pb.value = 100
         self._addingControlPoint = False
 
     def get_iou(self, gt_mask, pred_mask, newPointPos, ignore_label=-1):
@@ -874,8 +872,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         output_data = (pred_probs > pred_thr) * pred_probs  # (12, 512, 512) DHW
         output_data[output_data > 0] = 1
-
-        self.ui.progressBar.setValue(90)
 
         # 加载3d模型预测的mask，由 numpy 转换成SimpleITK格式
         output_data = np.transpose(output_data, [2, 1, 0])
