@@ -215,6 +215,12 @@
    </item>
    <item>
     <widget class="qMRMLSegmentEditorWidget" name="embeddedSegmentEditorWidget">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
      <property name="segmentationNodeSelectorVisible">
       <bool>false</bool>
      </property>
@@ -226,6 +232,9 @@
      </property>
      <property name="effectColumnCount">
       <number>3</number>
+     </property>
+     <property name="unorderedEffectsVisible">
+      <bool>false</bool>
      </property>
      <property name="jumpToSelectedSegmentEnabled">
       <bool>true</bool>
@@ -283,6 +292,9 @@
     <spacer name="verticalSpacer">
      <property name="orientation">
       <enum>Qt::Vertical</enum>
+     </property>
+     <property name="sizeType">
+      <enum>QSizePolicy::Minimum</enum>
      </property>
      <property name="sizeHint" stdset="0">
       <size>

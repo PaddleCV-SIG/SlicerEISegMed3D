@@ -198,8 +198,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         left = 100 - pb.value
 
         def setPb(percentage):
-            nonlocal pb
-            nonlocal left
             if percentage == 1 and pb.value != 100:
                 pb.value = 100
                 pb.reset()
@@ -293,6 +291,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.embeddedSegmentEditorWidget.setMRMLScene(slicer.mrmlScene)
         self.ui.embeddedSegmentEditorWidget.setMRMLSegmentEditorNode(self.logic.get_segment_editor_node())
 
+        # print(dir(self.ui.embeddedSegmentEditorWidget))
+
         # Set place point widget colors
         self.ui.dgPositiveControlPointPlacementWidget.setNodeColor(qt.QColor(0, 255, 0))
         self.ui.dgNegativeControlPointPlacementWidget.setNodeColor(qt.QColor(255, 0, 0))
@@ -374,68 +374,70 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def nextScan(self, pb=None, silentFail=False):
         skipped = False
-        orig_idx = self._currScanIdx
+        origIdx = currIdx = self._currScanIdx
         while True:
-            if self._currScanIdx >= len(self._scanPaths) - 1:
-                self._currScanIdx = orig_idx
+            if currIdx >= len(self._scanPaths) - 1:
+                currIdx = origIdx
                 if not silentFail:
                     slicer.util.errorDisplay(f"This is the last{' unannotated ' if skipped else ' '}scan. No next scan")
                 return False
-            self._currScanIdx += 1
-            if self._scanPaths[self._currScanIdx] not in self._finishedPaths:
+            currIdx += 1
+            if self._scanPaths[currIdx] not in self._finishedPaths:
                 break
             skipped = True
 
         self._lastTurnNextScan = True
-        self.turnTo(pb)
+        self.turnTo(currIdx)
         return True
 
     def prevScan(self, pb=None, silentFail=False):
         skipped = False
-        orig_idx = self._currScanIdx
+        origIdx = currIdx = self._currScanIdx
         while True:
-            if self._currScanIdx <= 0:
-                self._currScanIdx = orig_idx
+            if currIdx <= 0:
+                currIdx = origIdx
                 if not silentFail:
                     slicer.util.errorDisplay(
                         f"This is the first{' unannotated 'if skipped else ' ' }scan. No previous scan"
                     )
                 return False
-            self._currScanIdx -= 1
-            if self._scanPaths[self._currScanIdx] not in self._finishedPaths:
+            currIdx -= 1
+            if self._scanPaths[currIdx] not in self._finishedPaths:
                 break
             skipped = True
 
         self._lastTurnNextScan = False
-        self.turnTo(pb)
+        self.turnTo(currIdx)
         return True
 
-    def turnTo(self, pb=None):
+    def turnTo(self, currIdx, pb=None):
         """
-        Turn to the self._currScanIdx th scan, load scan and label
+        Turn to the currIdx th scan, load scan and label
         """
         # 0. ensure valid status and clear scene
         pb, setPb = EIMedSeg3DWidget.registerPb(pb, windowTitle="Loading scan and label")
         pb.labelText = "Performing checks"
         setPb(0.1)
 
-        if len(self._scanPaths) == 0:
-            slicer.util.errorDisplay("No scan found, please load scans first.", autoCloseMsec=2000)
-            return
-        logging.info(f"Turning to the {self._currScanIdx}th scan, path is {self._scanPaths[self._currScanIdx]}")
-
-        self.ui.dgPositiveControlPointPlacementWidget.setEnabled(False)
-        self.ui.dgNegativeControlPointPlacementWidget.setEnabled(False)
-
         if self.segmentation is not None:
             self.saveSegmentation()
         if self._usingInteractive:
             self.exitInteractiveMode()
+
+        if len(self._scanPaths) == 0:
+            slicer.util.errorDisplay("No scan found, please load scans first.", autoCloseMsec=2000)
+            return
+        logging.info(f"Turning to the {currIdx}th scan, path is {self._scanPaths[currIdx]}")
+
+        self.ui.dgPositiveControlPointPlacementWidget.setEnabled(False)
+        self.ui.dgNegativeControlPointPlacementWidget.setEnabled(False)
+
         self.clearScene()  # remove the volume and segmentation node
+        self._currScanIdx = currIdx
 
         # 1. load new scan & preprocess
         pb.labelText = "Loading scan"
-        image_path = self._scanPaths[self._currScanIdx]
+        image_path = self._scanPaths[currIdx]
         self._currVolumeNode = slicer.util.loadVolume(image_path)
         self._currVolumeNode.SetName(osp.basename(image_path).split(".")[0])
         setPb(0.8)
@@ -742,6 +744,10 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if not TEST:
             self.setImage()
         self.clicker = Clicker()
+        # TODO: palette
+        # TODO: scroll to the new segment
+        self.ui.embeddedSegmentEditorWidget.setFocus()
+
         self.ui.embeddedSegmentEditorWidget.setDisabled(True)
         self._usingInteractive = True
 
@@ -931,44 +937,31 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         save segmentation mask to self._dataFolder
         """
         tic = time.time()
-        # 1. generate final segmentation mask np
+        # 1. correct labelvalue
         catgs = self.getCatgFromTxt()
         segmentationNode = self.segmentationNode
         segmentation = segmentationNode.GetSegmentation()
-        # imageData = self._currVolumeNode.GetImageData()
-        # size = imageData.GetDimensions()
-        # size = [size[2], size[1], size[0]]
-        # resFinal = np.zeros(size)
 
         for segment in self.segments:
             name = segment.GetName()
             segment.SetLabelValue(catgs[name])
 
-            # res = slicer.util.arrayFromSegmentBinaryLabelmap(
-            #     segmentationNode, self.getSegmentId(segment), self._currVolumeNode
-            # ).astype("bool")
-            # resFinal[res] = catgs[name]
-
-        # print("Final result ids", np.unique(resFinal))
-
+        # 2. prepare save path
         scanPath = self._scanPaths[self._currScanIdx]
-
-        # 2. build segmentation file from np mask
-        # origin = sitk.ReadImage(scanPath)
-        # mask = sitk.GetImageFromArray(resFinal)
-        # mask.SetSpacing(origin.GetSpacing())
-        # mask.SetOrigin(origin.GetOrigin())
-        # mask.SetDirection(origin.GetDirection())
-        # mask = sitk.Cast(mask, sitk.sitkUInt8)
-
-        # 3. save to disk
         dotPos = scanPath.find(".")
         labelPath = scanPath[:dotPos] + "_label" + scanPath[dotPos:]
-        slicer.util.saveNode(segmentationNode, labelPath)
 
-        # sitk.WriteImage(mask, labelPath)
+        # 3 save
+        labelmapVolumeNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
+        slicer.modules.segmentations.logic().ExportVisibleSegmentsToLabelmapNode(
+            segmentationNode, labelmapVolumeNode, self._currVolumeNode
+        )
+        res = slicer.util.saveNode(labelmapVolumeNode, labelPath)
+        if res:
+            slicer.util.delayDisplay(f"{labelPath.split('/')[-1]} save successfully.", autoCloseMsec=1200)
+        else:
+            slicer.util.errorDisplay(f"{labelPath.split('/')[-1]} save failed!")
 
-        slicer.util.delayDisplay(f"{labelPath.split('/')[-1]} save successfully", autoCloseMsec=1200)
         print(f"saving took {time.time() - tic}s")
 
     """ display related """
