@@ -275,8 +275,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.dgPositiveControlPointPlacementWidget.setNodeColor(qt.QColor(0, 255, 0))
         self.ui.dgNegativeControlPointPlacementWidget.setNodeColor(qt.QColor(255, 0, 0))
 
-        print(dir(self.ui.dgNegativeControlPointPlacementWidget.placeButton()))
-
     def init_params(self):
         """init changble parameters here"""
         self.predictor_params_ = {"norm_radius": 2, "spatial_scale": 1.0}
@@ -640,7 +638,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # delete
         for segmentId in set(self._prevCatg.keys()) - set(segmentation.GetSegmentIDs()):
-            print("deleting", segmentId)
+            logging.info("deleting segment", segmentId, self.segmentation.GetSegment(segmentId))
             del name2value[self._prevCatg[segmentId]]
 
         # 3. record catg info
@@ -652,8 +650,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         else:
             config = json.loads(open(self.configPath, "r").read())
         config["labels"] = [{"name": name, "labelValue": value} for name, value in name2value.items()]
-        with open(self.configPath, "w") as f:
-            print(json.dumps(config), file=f)
+        print(json.dumps(config), file=open(self.configPath, "w"))
 
         self._syncingCatg = False
 
@@ -834,7 +831,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         segmentId = self.ui.embeddedSegmentEditorWidget.currentSegmentID()
         segment = segmentation.GetSegment(segmentId)
 
-        print("Current segment: ", self.getSegmentId(segment), segment.GetName(), segment.GetLabelValue())
+        logging.info("Current segment: ", self.getSegmentId(segment), segment.GetName(), segment.GetLabelValue())
 
         with slicer.util.tryWithErrorDisplay("Failed to run inference.", waitCursor=True):
             self.setPb(0.2, "Running inference")
@@ -844,7 +841,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 p = newPointPos
                 p = [p[2], p[1], p[0]]
                 res = slicer.util.arrayFromSegmentBinaryLabelmap(self.segmentationNode, segmentId, self._currVolumeNode)
-                print(res.shape)
                 mask = np.zeros_like(res)
                 mask[p[0] - 10 : p[0] + 10, p[1] - 10 : p[1] + 10, p[2] - 10 : p[2] + 10] = 1
             else:
@@ -997,9 +993,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         colorTableNode.SetNamesInitialised(True)
 
         for segment in self.segments:
-            # colorTableNode.SetColor(segment.GetLabelValue(), segment.GetName(), *segment.GetColor(), 1.0)
             colorTableNode.SetColor(catgs[segment.GetName()], segment.GetName(), *segment.GetColor(), 1.0)
-            print(segment.GetLabelValue(), segment.GetName())
 
         labelmapVolumeNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
 
@@ -1023,7 +1017,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             slicer.util.errorDisplay(f"{labelPath.split('/')[-1]} save failed!")
 
         self._dirty = False
-        print(f"saving took {time.time() - tic}s")
+        logging.info(f"saving took {time.time() - tic}s")
 
     """ display related """
 
@@ -1060,7 +1054,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         Called each time the user opens this module. Not when reload/switch back.
         """
-        print("Enter called")
         # if TEST:
         #     self.clearScene(clearVolume=True)
 
@@ -1068,7 +1061,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         Called each time the user opens a different module.
         """
-        print("exit called")
         # Do not react to parameter node changes (GUI wlil be updated when the user enters into the module)
         self.removeObserver(
             self._parameterNode,
@@ -1081,7 +1073,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         super().onReload()
 
     def onSceneEndImport(self, caller, event):
-        # print("Endimport called")
         """
         Called after reload and after scan/segmentation is imported
         """
@@ -1089,14 +1080,12 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             return
 
         self._endImportProcessing = True
-        # print("endimport", caller, event)
         self._endImportProcessing = False
 
     def onSceneStartClose(self, caller, event):
         """
         Called just before the scene is closed.
         """
-        print("start close called")
         self._turninig = True
         # Parameter node will be reset, do not use it anymore
         self.saveProgress()
@@ -1119,7 +1108,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         Called just after the scene is closed.
         """
-        print("end close called")
         # If this module is shown while the scene is closed then recreate a new parameter node immediately
         if self.parent.isEntered:
             self.initializeParameterNode()
