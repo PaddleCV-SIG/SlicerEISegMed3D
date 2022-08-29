@@ -3,6 +3,7 @@ import os
 import os.path as osp
 import time
 import json
+from functools import partial
 
 import qt
 import ctk
@@ -284,7 +285,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.test_iou = False  # the label file need to be set correctly
         self.file_suffix = [".nii", ".nii.gz"]  # files with these suffix will be loaded
         self.device, self.enable_mkldnn = "cpu", True
-        self._currScanIdx, self._finishedPaths = self.getProgress()
 
     def clearScene(self, clearVolume=False):
         # TODO: remove old volume
@@ -367,6 +367,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.setPb(0.5, f"Found {len(paths)} scans in folder {self._dataFolder}")
 
         self._currScanIdx, self._finishedPaths = self.getProgress()
+        self.updateProgressWidgets()
+
         if len(set(self._scanPaths) - set(self._finishedPaths)) == 0:
             self.closePb()
             slicer.util.delayDisplay(f"All {len(self._scanPaths)} scans have been annotated!", 4000)
@@ -511,6 +513,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.ui.dgPositiveControlPointPlacementWidget.setEnabled(True)
         self.ui.dgNegativeControlPointPlacementWidget.setEnabled(True)
+
+        self.updateProgressWidgets()
 
         # 5. set image
         self.setPb(0.9, "Preprocessing image for interactive segmentation")
@@ -680,6 +684,40 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 if p == osp.join(self._dataFolder, config["leftOff"]):
                     leftOffIdx = idx
         return leftOffIdx, [osp.join(self._dataFolder, p) for p in config.get("finished", [])]
+
+    def updateProgressWidgets(self):
+        self.ui.annProgressBar.setValue(int(100 * len(self._finishedPaths) / len(self._scanPaths)))
+        self.ui.progressDetail.setText(f"Finished: {len(self._finishedPaths)} / Total: {len(self._scanPaths)}")
+
+        def toggleFinished(idx, *args):
+            print(idx, *args)
+            if self._scanPaths[idx] in self._finishedPaths:
+                self._finishedPaths.remove(self._scanPaths[idx])
+            else:
+                self._finishedPaths.append(self._scanPaths[idx])
+            self.saveProgress()
+            self.updateProgressWidgets()
+
+        table = self.ui.progressTable
+        table.setRowCount(len(self._scanPaths))
+        for idx, path in enumerate(self._scanPaths):
+            layout = qt.QVBoxLayout()
+            checkbox = qt.QCheckBox()
+            checkbox.setChecked(path in self._finishedPaths)
+
+            checkbox.toggled.connect(partial(toggleFinished, idx))
+            layout.addWidget(checkbox)
+            wrapper = qt.QWidget()
+            wrapper.setLayout(layout)
+            table.setCellWidget(idx, 0, wrapper)
+
+            table.setItem(idx, 1, qt.QTableWidgetItem(osp.relpath(path, self._dataFolder)))
+
+        table.resizeColumnsToContents()
+
+        # ugly fix. second colum wont strength after setting data
+        self.ui.progressCollapse.toggle()
+        self.ui.progressCollapse.toggle()
 
     """ control point related """
 
@@ -961,6 +999,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.saveSegmentation()
         self._finishedPaths.append(self._scanPaths[self._currScanIdx])
         self.saveProgress()
+        self.updateProgressWidgets()
         if self._lastTurnNextScan:
             self.nextScan()
         else:
