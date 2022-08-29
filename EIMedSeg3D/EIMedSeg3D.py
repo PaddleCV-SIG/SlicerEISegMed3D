@@ -209,7 +209,9 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.dgNegativePointListNode = None
         self.dgNegativePointListNodeObservers = []
         slicer.progressWindow = None
+
         # status var
+        self._dirty = False
         self._syncingCatg = False
         self._usingInteractive = False
         self._updatingGUIFromParameterNode = False
@@ -387,24 +389,26 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             f"All scans found under {self._dataFolder} are{','.join([' '+osp.basename(p) for p in self._scanPaths])}"
         )
 
-    def nextScan(self, silentFail=False, skipSave=False):
+    def nextScan(self, silentFail=False):
+        self.saveSegmentation()
         nextIdx = self.getUndoneTaskId(self._currScanIdx, "next")
         if nextIdx is None:
             if not silentFail:
                 slicer.util.errorDisplay(f"This is the last unannotated scan. No next scan")
             return False
         self._lastTurnNextScan = True
-        self.turnTo(nextIdx, skipSave)
+        self.turnTo(nextIdx)
         return True
 
-    def prevScan(self, silentFail=False, skipSave=False):
+    def prevScan(self, silentFail=False):
+        self.saveSegmentation()
         prevIdx = self.getUndoneTaskId(self._currScanIdx, "prev")
         if prevIdx is None:
             if not silentFail:
                 slicer.util.errorDisplay(f"This is the first unannotated scan. No previous scan")
             return False
         self._lastTurnNextScan = False
-        self.turnTo(prevIdx, skipSave)
+        self.turnTo(prevIdx)
         return True
 
     def getUndoneTaskId(self, currIdx, direction):
@@ -425,7 +429,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     break
             return currIdx
 
-    def turnTo(self, currIdx, skipSave=False):
+    def turnTo(self, currIdx):
         """
         Turn to the currIdx th scan, load scan and label
         """
@@ -433,7 +437,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.initPb("Preparing to load", "Load scan and label")
         self.setPb(0.1)
 
-        if not skipSave and self.segmentation is not None:
+        if self.segmentation is not None:
             self.saveSegmentation()
         if self._usingInteractive:
             self.exitInteractiveMode()
@@ -474,6 +478,10 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 return
             self.catgSegmentation2Txt()
 
+        def setDirty(*args):
+            self._dirty = True
+
+        segmentNode.AddObserver(segmentNode.GetContentModifiedEvents().GetValue(1), setDirty)
         segmentNode.AddObserver(segmentNode.GetContentModifiedEvents().GetValue(5), sync)
         segmentNode.AddObserver(segmentNode.GetContentModifiedEvents().GetValue(4), sync)
 
@@ -967,23 +975,28 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._finishedPaths.append(self._scanPaths[self._currScanIdx])
         self.saveProgress()
         if self._lastTurnNextScan:
-            self.nextScan(skipSave=True)
+            self.nextScan()
         else:
-            self.prevScan(skipSave=True)
+            self.prevScan()
 
     def saveSegmentation(self):
         """
         save segmentation mask to self._dataFolder
         """
         tic = time.time()
+        if not self._dirty:
+            logging.info("Segmentation not changed, skip saving")
+            slicer.app.processEvents()
+            return
+
         # 1. correct labelvalue
         catgs = self.getCatgFromTxt()
         segmentationNode = self.segmentationNode
         segmentation = segmentationNode.GetSegmentation()
 
-        for segment in self.segments:
-            name = segment.GetName()
-            segment.SetLabelValue(catgs[name])
+        # for segment in self.segments:
+        #     name = segment.GetName()
+        #     segment.SetLabelValue(catgs[name])
 
         # 2. prepare save path
         scanPath = self._scanPaths[self._currScanIdx]
@@ -1001,7 +1014,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         for segment in self.segments:
             colorTableNode.SetColor(segment.GetLabelValue(), segment.GetName(), *segment.GetColor(), 1.0)
             print(segment.GetName(), segment.GetLabelValue())
-            print(dir(segment))
 
         labelmapVolumeNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
 
@@ -1015,7 +1027,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         )
         slicer.mrmlScene.RemoveNode(colorTableNode)
 
-        print(dir(self.segmentation))
         res = slicer.util.saveNode(labelmapVolumeNode, labelPath)
 
         if res:
@@ -1024,6 +1035,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         else:
             slicer.util.errorDisplay(f"{labelPath.split('/')[-1]} save failed!")
 
+        self._dirty = False
         print(f"saving took {time.time() - tic}s")
 
     """ display related """
