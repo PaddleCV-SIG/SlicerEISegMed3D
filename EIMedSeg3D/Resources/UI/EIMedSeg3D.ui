@@ -210,34 +210,56 @@
     </widget>
    </item>
    <item>
-    <widget class="qMRMLSegmentEditorWidget" name="embeddedSegmentEditorWidget">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
+    <widget class="Line" name="line">
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
      </property>
-     <property name="segmentationNodeSelectorVisible">
+    </widget>
+   </item>
+   <item>
+    <widget class="ctkCollapsibleButton" name="segmentEditorCollapse">
+     <property name="text">
+      <string>Segment Editor</string>
+     </property>
+     <property name="collapsed">
       <bool>false</bool>
      </property>
-     <property name="masterVolumeNodeSelectorVisible">
-      <bool>false</bool>
+     <property name="collapsedHeight">
+      <number>9</number>
      </property>
-     <property name="switchToSegmentationsButtonVisible">
-      <bool>true</bool>
-     </property>
-     <property name="effectColumnCount">
-      <number>3</number>
-     </property>
-     <property name="unorderedEffectsVisible">
-      <bool>false</bool>
-     </property>
-     <property name="jumpToSelectedSegmentEnabled">
-      <bool>true</bool>
-     </property>
-     <property name="sourceVolumeNodeSelectorVisible" stdset="0">
-      <bool>false</bool>
-     </property>
+     <layout class="QVBoxLayout" name="verticalLayout_2">
+      <item>
+       <widget class="qMRMLSegmentEditorWidget" name="embeddedSegmentEditorWidget">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="segmentationNodeSelectorVisible">
+         <bool>false</bool>
+        </property>
+        <property name="sourceVolumeNodeSelectorVisible">
+         <bool>false</bool>
+        </property>
+        <property name="masterVolumeNodeSelectorVisible">
+         <bool>false</bool>
+        </property>
+        <property name="switchToSegmentationsButtonVisible">
+         <bool>false</bool>
+        </property>
+        <property name="effectColumnCount">
+         <number>3</number>
+        </property>
+        <property name="unorderedEffectsVisible">
+         <bool>false</bool>
+        </property>
+        <property name="jumpToSelectedSegmentEnabled">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
     </widget>
    </item>
    <item>
@@ -271,10 +293,42 @@
     </layout>
    </item>
    <item>
-    <widget class="Line" name="line">
-     <property name="orientation">
-      <enum>Qt::Horizontal</enum>
+    <widget class="ctkCollapsibleButton" name="progressCollapse">
+     <property name="text">
+      <string>Progress</string>
      </property>
+     <property name="collapsed">
+      <bool>true</bool>
+     </property>
+     <property name="collapsedHeight">
+      <number>9</number>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayout_2">
+      <item>
+       <widget class="QTableWidget" name="progressTable">
+        <property name="columnCount">
+         <number>2</number>
+        </property>
+        <attribute name="horizontalHeaderVisible">
+         <bool>false</bool>
+        </attribute>
+        <attribute name="horizontalHeaderCascadingSectionResizes">
+         <bool>true</bool>
+        </attribute>
+        <attribute name="horizontalHeaderShowSortIndicator" stdset="0">
+         <bool>true</bool>
+        </attribute>
+        <attribute name="horizontalHeaderStretchLastSection">
+         <bool>true</bool>
+        </attribute>
+        <attribute name="verticalHeaderVisible">
+         <bool>false</bool>
+        </attribute>
+        <column/>
+        <column/>
+       </widget>
+      </item>
+     </layout>
     </widget>
    </item>
    <item>
@@ -283,7 +337,7 @@
       <enum>Qt::Vertical</enum>
      </property>
      <property name="sizeType">
-      <enum>QSizePolicy::Minimum</enum>
+      <enum>QSizePolicy::Expanding</enum>
      </property>
      <property name="sizeHint" stdset="0">
       <size>
@@ -296,6 +350,12 @@
   </layout>
  </widget>
  <customwidgets>
+  <customwidget>
+   <class>ctkCollapsibleButton</class>
+   <extends>QWidget</extends>
+   <header>ctkCollapsibleButton.h</header>
+   <container>1</container>
+  </customwidget>
   <customwidget>
    <class>ctkDirectoryButton</class>
    <extends>QWidget</extends>
