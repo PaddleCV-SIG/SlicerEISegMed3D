@@ -94,14 +94,6 @@ and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR0132
         pass
 
 
-class LabelNode:
-    def __init__(self, segmentId=None, labelValue=None, name=None, color=None):
-        self.segmentId = segmentId
-        self.labelValue = labelValue
-        self.name = name
-        self.color = color
-
-
 class Clicker(object):
     def __init__(self):
         self.reset_clicks()
