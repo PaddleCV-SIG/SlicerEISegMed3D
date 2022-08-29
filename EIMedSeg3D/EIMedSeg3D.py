@@ -4,22 +4,17 @@ import os.path as osp
 import time
 from functools import partial
 
-# import sitkUtils
 import qt
 import ctk
 import vtk
 import numpy as np
-
-# import nibabel as nib
 import SimpleITK as sitk
-import slicer
 
+import slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
 import paddle
-from paddle.inference import create_predictor, Config
-
 import inference
 import inference.predictor as predictor
 
@@ -233,17 +228,18 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.dgPositiveControlPointPlacementWidget.setMRMLScene(slicer.mrmlScene)
         self.ui.dgPositiveControlPointPlacementWidget.placeButton().toolTip = "Select positive points"
         self.ui.dgPositiveControlPointPlacementWidget.placeButton().show()
+        self.ui.dgPositiveControlPointPlacementWidget.deleteButton().setFixedHeight(0)
+        self.ui.dgPositiveControlPointPlacementWidget.deleteButton().setFixedWidth(0)
 
         self.ui.dgNegativeControlPointPlacementWidget.setMRMLScene(slicer.mrmlScene)
         self.ui.dgNegativeControlPointPlacementWidget.placeButton().toolTip = "Select negative points"
         self.ui.dgNegativeControlPointPlacementWidget.placeButton().show()
+        self.ui.dgNegativeControlPointPlacementWidget.deleteButton().setFixedHeight(0)
+        self.ui.dgNegativeControlPointPlacementWidget.deleteButton().setFixedWidth(0)
 
         # Segment editor
         self.ui.embeddedSegmentEditorWidget.setMRMLScene(slicer.mrmlScene)
         self.ui.embeddedSegmentEditorWidget.setMRMLSegmentEditorNode(self.logic.get_segment_editor_node())
-        # segmentEditorWidget = slicer.modules.segmenteditor.widgetRepresentation().self().editor
-        # segmentEditorWidget.setEffectNameOrder(["Paint", "Erase"])
-        # segmentEditorWidget.unorderedEffectsVisible = False
 
         self.initializeParameterNode()
 
@@ -251,7 +247,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # TODO: move to initializeParameterNode
         self.ui.dgPositiveControlPointPlacementWidget.setNodeColor(qt.QColor(0, 255, 0))
         self.ui.dgNegativeControlPointPlacementWidget.setNodeColor(qt.QColor(255, 0, 0))
-        self.hideDeleteButtons()
 
     def clearAllPoints(self):
         self.ui.dgPositiveControlPointPlacementWidget.deleteAllPoints()
@@ -285,25 +280,29 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def loadScans(self):
         """Get all the scans under a folder and turn to the first one"""
+
+        # 1. ensure valid input
         dataFolder = self.ui.dataFolderLineEdit.currentPath
         if dataFolder is None or len(dataFolder) == 0:
-            # test remove
-            dataFolder = os.path.join(os.path.dirname(os.path.realpath(__file__)), os.path.join("test_MR", "Case2.nii"))
             slicer.util.delayDisplay("Please select a Data Folder first!", autoCloseMsec=5000)
             return
 
+        if not osp.exists(dataFolder):
+            slicer.util.delayDisplay(f"The Data Folder( {dataFolder} ) doesn't exist!", autoCloseMsec=2000)
+            return
+
+        self.ui.dataFolderLineEdit.addCurrentPathToHistory()
         self.clearScene()
 
-        # list files in assigned directory
+        # 2. list files in assigned directory
         self._dataFolder = dataFolder
         paths = os.listdir(self._dataFolder)
         paths = sorted([s for s in paths if s.split(".")[0][-len("_label"):] != "_label"])
         paths = [osp.join(self._dataFolder, s) for s in paths]
-
         self._scanPaths = [p for p in paths if p[p.find("."):] in self.file_suffix]
 
         slicer.util.delayDisplay(
-            "Successfully loaded {} scans! \nPlease press on next scan to show them!".format(len(self._scanPaths)),
+            f"Successfully loaded {len(self._scanPaths)} scans!",
             autoCloseMsec=3000,
         )
 
@@ -313,11 +312,12 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self._currScanIdx = None
 
         self.nextScan()
-        # test
-        print("All scan paths", self._scanPaths)
+
+        logging.info(
+            f"All scans found under {self._dataFolder} are {','.join([' '+osp.basename(p) for p in self._scanPaths])}"
+        )
 
     def clearScene(self):
-        self.hideDeleteButtons()
         if self._currVolumeNode is not None:
             slicer.mrmlScene.RemoveNode(self._currVolumeNode)
         if self._segmentNode is not None:
@@ -379,7 +379,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # 1. load new scan & preprocess
         image_path = self._scanPaths[self._currScanIdx]
         self._currVolumeNode = slicer.util.loadVolume(image_path)
-        self.hideDeleteButtons()
         self._currVolumeNode_scanPath[self._currVolumeNode] = image_path
 
         # BUG: load image before loading model
@@ -510,7 +509,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         return infor_dict
 
     def onControlPointAdded(self, observer, eventid):
-        self.hideDeleteButtons()
         posPoints = self.getControlPointsXYZ(self.dgPositivePointListNode, "positive")
         negPoints = self.getControlPointsXYZ(self.dgNegativePointListNode, "negative")
 
@@ -707,7 +705,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def chooseLabelSavePath(self):
         self._labelSavePath = qt.QFileDialog.getExistingDirectory(None, 'Please select a directory to save', './')
         print(self._labelSavePath)
-        pass
 
     def submitLabel(self):
         """
@@ -899,7 +896,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         This method is called whenever parameter node is changed.
         The module GUI is updated to show the current state of the parameter node.
         """
-        self.hideDeleteButtons()
 
         if self._parameterNode is None or self._updatingGUIFromParameterNode:
             return
