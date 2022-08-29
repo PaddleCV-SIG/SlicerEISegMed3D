@@ -283,7 +283,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.dgPositiveControlPointPlacementWidget.setNodeColor(qt.QColor(0, 255, 0))
         self.ui.dgNegativeControlPointPlacementWidget.setNodeColor(qt.QColor(255, 0, 0))
 
-        print("+_+_+", dir(self))
+        print(dir(self.ui.dgNegativeControlPointPlacementWidget.placeButton()))
 
     def init_params(self):
         """init changble parameters here"""
@@ -298,9 +298,10 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def clearScene(self, clearVolume=False):
         # TODO: remove old volume
-        if clearVolume:
-            for node in slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode"):
-                slicer.mrmlScene.RemoveNode(node)
+        # if clearVolume:
+        #     for node in slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode"):
+        #         slicer.mrmlScene.RemoveNode(node)
+
         if self._currVolumeNode is not None:
             slicer.mrmlScene.RemoveNode(self._currVolumeNode)
         segmentationNode = self.segmentationNode
@@ -462,6 +463,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.clearScene()  # remove segmentation node and control points
         self._currScanIdx = currIdx
 
+        slicer.app.processEvents()
         # 1. load new scan & preprocess
         image_path = self._scanPaths[currIdx]
         self.setPb(0.2, f"Loading {osp.basename(image_path)}")
@@ -479,7 +481,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         segmentNode.SetName("EIMedSeg3DSegmentation")
         segmentNode.SetReferenceImageGeometryParameterFromVolumeNode(self._currVolumeNode)
-
+        slicer.app.processEvents()
+        slicer.app.processEvents()
         # update category info
 
         for segment in self.segments:
@@ -492,15 +495,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         for idx, segment in enumerate(self.segments):
             segment.SetColor(colors[idx % len(colors)])
 
-        def test(num):
-            def fun(*args):
-                print(num, args)
-
-            return fun
-
-        for val in range(7):
-            segmentNode.AddObserver(segmentNode.GetContentModifiedEvents().GetValue(val), test(val))
-
         def sync(*args):
             if not self._turninig:
                 self.catgSegmentation2File()
@@ -511,7 +505,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         segmentNode.AddObserver(segmentNode.GetContentModifiedEvents().GetValue(5), sync)
         segmentNode.AddObserver(segmentNode.GetContentModifiedEvents().GetValue(4), sync)
-        segmentNode.AddObserver(segmentNode.GetContentModifiedEvents().GetValue(1), setDirty())
+        segmentNode.AddObserver(segmentNode.GetContentModifiedEvents().GetValue(1), setDirty)
 
         # add: 3, 5
         # edit: 5
@@ -520,8 +514,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # 3. create category label from txt and segmentation
         self.setPb(0.8, "Wrapping up")
         self.saveProgress()
-
-        # print(segment.GetLabelValue(), segment.GetName())
 
         # 4. set the editor as current result.
         self.ui.embeddedSegmentEditorWidget.setSegmentationNode(segmentNode)
@@ -685,8 +677,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         config["finished"] = [relpath(p) for p in self._finishedPaths]
         config["leftOff"] = relpath(self._scanPaths[self._currScanIdx])
 
-        with open(configPath, "w") as f:
-            print(json.dumps(config), file=f)
+        print(json.dumps(config), file=open(configPath, "w"))
 
     def getProgress(self):
         configPath = self.configPath
@@ -804,12 +795,11 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._usingInteractive = True
 
     def exitInteractiveMode(self):
-        print("exitInteractiveMode")
-        print(self.ui.dgNegativeControlPointPlacementWidget.placeButton().isDown())
         self.ui.dgPositiveControlPointPlacementWidget.deleteAllPoints()
         self.ui.dgNegativeControlPointPlacementWidget.deleteAllPoints()
 
         self.ui.dgNegativeControlPointPlacementWidget.placeButton().setChecked(False)
+
         self.ui.embeddedSegmentEditorWidget.setDisabled(False)
         self.ui.finishSegmentButton.setEnabled(False)
 
@@ -1034,10 +1024,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # clean up useless nodes
         slicer.mrmlScene.RemoveNode(labelmapVolumeNode)
-        slicer.mrmlScene.RemoveNode(colorTableNode)
 
         if res:
-            # slicer.util.delayDisplay(f"{labelPath.split('/')[-1]} save successfully.", autoCloseMsec=1200)
             logging.info(f"{labelPath.split('/')[-1]} save successfully.")
         else:
             slicer.util.errorDisplay(f"{labelPath.split('/')[-1]} save failed!")
@@ -1153,7 +1141,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.setParameterNode(self.logic.getParameterNode())
         segNode = self.segmentationNode
         if segNode is not None:
-            self.ui.opacitySlider.sketValue(segNode.GetDisplayNode().GetOpacity())
+            self.ui.opacitySlider.setValue(segNode.GetDisplayNode().GetOpacity())
 
         # print("initializeParameterNode")
         # self.setParameterNode(self.logic.getParameterNode())
