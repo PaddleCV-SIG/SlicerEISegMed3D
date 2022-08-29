@@ -213,6 +213,9 @@
      <property name="switchToSegmentationsButtonVisible">
       <bool>true</bool>
      </property>
+     <property name="effectColumnCount">
+      <number>3</number>
+     </property>
      <property name="jumpToSelectedSegmentEnabled">
       <bool>true</bool>
      </property>
