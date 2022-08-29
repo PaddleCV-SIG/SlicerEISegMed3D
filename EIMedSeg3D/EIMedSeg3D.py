@@ -271,6 +271,9 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.dgNegativeControlPointPlacementWidget.deleteButton().setFixedWidth(0)
         self.ui.dgNegativeControlPointPlacementWidget.placeButton().connect("clicked(bool)", self.enterInteractiveMode)
 
+        # print(dir(self.ui.dgNegativeControlPointPlacementWidget.placeButton()))
+        print(type(self.ui.dgNegativeControlPointPlacementWidget.placeButton()))
+
         # segment editor
         self.ui.embeddedSegmentEditorWidget.setMRMLScene(slicer.mrmlScene)
         self.ui.embeddedSegmentEditorWidget.setMRMLSegmentEditorNode(self.logic.get_segment_editor_node())
@@ -385,6 +388,9 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self._currScanIdx += 2
             self.prevScan()
 
+        self.ui.prevScanButton.setEnabled(True)
+        self.ui.nextScanButton.setEnabled(True)
+        self.ui.finishScanButton.setEnabled(True)
         logging.info(
             f"All scans found under {self._dataFolder} are{','.join([' '+osp.basename(p) for p in self._scanPaths])}"
         )
@@ -797,13 +803,19 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.embeddedSegmentEditorWidget.setFocus()
 
         self.ui.embeddedSegmentEditorWidget.setDisabled(True)
+        self.ui.finishSegmentButton.setEnabled(True)
         self._usingInteractive = True
 
     def exitInteractiveMode(self):
+        print("exitInteractiveMode")
+        print(self.ui.dgNegativeControlPointPlacementWidget.placeButton().isDown())
         self.ui.dgPositiveControlPointPlacementWidget.deleteAllPoints()
         self.ui.dgNegativeControlPointPlacementWidget.deleteAllPoints()
 
+        self.ui.dgNegativeControlPointPlacementWidget.placeButton().setChecked(False)
         self.ui.embeddedSegmentEditorWidget.setDisabled(False)
+        self.ui.finishSegmentButton.setEnabled(False)
+
         self._usingInteractive = False
 
     """ inference related """
@@ -994,10 +1006,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         segmentationNode = self.segmentationNode
         segmentation = segmentationNode.GetSegmentation()
 
-        # for segment in self.segments:
-        #     name = segment.GetName()
-        #     segment.SetLabelValue(catgs[name])
-
         # 2. prepare save path
         scanPath = self._scanPaths[self._currScanIdx]
         dotPos = scanPath.find(".")
@@ -1013,7 +1021,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         for segment in self.segments:
             colorTableNode.SetColor(segment.GetLabelValue(), segment.GetName(), *segment.GetColor(), 1.0)
-            print(segment.GetName(), segment.GetLabelValue())
 
         labelmapVolumeNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
 

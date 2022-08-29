@@ -85,6 +85,9 @@
     <layout class="QHBoxLayout" name="prevNextLayout">
      <item>
       <widget class="QPushButton" name="prevScanButton">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
        <property name="text">
         <string>Prev Scan</string>
        </property>
@@ -92,6 +95,9 @@
      </item>
      <item>
       <widget class="QPushButton" name="nextScanButton">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
        <property name="text">
         <string>Next Scan</string>
        </property>
@@ -176,6 +182,9 @@
     <layout class="QHBoxLayout" name="finishLayout">
      <item>
       <widget class="QPushButton" name="finishSegmentButton">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
        <property name="text">
         <string>Finish Segment</string>
        </property>
@@ -183,6 +192,9 @@
      </item>
      <item>
       <widget class="QPushButton" name="finishScanButton">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
        <property name="text">
         <string>Finish Scan</string>
        </property>
