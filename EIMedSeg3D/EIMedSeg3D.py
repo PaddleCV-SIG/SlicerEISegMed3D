@@ -4,6 +4,8 @@ import os.path as osp
 import time
 import json
 from functools import partial
+import random
+import threading
 
 import qt
 import ctk
@@ -202,7 +204,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.dgNegativePointListNode = None
         self.dgNegativePointListNodeObservers = []
         self._prevCatg = None
-        slicer.progressWindow = None
+        self._loadingScans = set()
+        self.pb = None
 
         # status var
         self._turninig = False
@@ -286,14 +289,14 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.file_suffix = [".nii", ".nii.gz"]  # files with these suffix will be loaded
         self.device, self.enable_mkldnn = "cpu", True
 
-    def clearScene(self, clearVolume=False):
+    def clearScene(self, clearAllVolumes=False):
         # TODO: remove old volume
-        # if clearVolume:
-        #     for node in slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode"):
-        #         slicer.mrmlScene.RemoveNode(node)
+        if clearAllVolumes:
+            for node in slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode"):
+                slicer.mrmlScene.RemoveNode(node)
 
-        if self._currVolumeNode is not None:
-            slicer.mrmlScene.RemoveNode(self._currVolumeNode)
+        # if self._currVolumeNode is not None:
+        #     slicer.mrmlScene.RemoveNode(self._currVolumeNode)
         segmentationNode = self.segmentationNode
         if segmentationNode is not None:
             slicer.mrmlScene.RemoveNode(segmentationNode)
@@ -301,35 +304,35 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     """ progress bar related """
 
     def initPb(self, label="Processing..", windowTitle=None):
-        if slicer.progressWindow is None:
-            slicer.progressWindow = slicer.util.createProgressDialog()
-            slicer.progressWindow.setCancelButtonText("Close")
-            slicer.progressWindow.setAutoClose(True)
-            slicer.progressWindow.show()
-            slicer.progressWindow.activateWindow()
-            slicer.progressWindow.setValue(0)
+        if self.pb is None:
+            self.pb = slicer.util.createProgressDialog()
+            self.pb.setCancelButtonText("Close")
+            self.pb.setAutoClose(True)
+            self.pb.show()
+            self.pb.activateWindow()
+            self.pb.setValue(0)
             self.pbLeft = 100
         else:
-            self.pbLeft = 100 - slicer.progressWindow.value
+            self.pbLeft = 100 - self.pb.value
 
         if windowTitle is not None:
-            slicer.progressWindow.setWindowTitle(windowTitle)
-        slicer.progressWindow.setLabelText(label)
+            self.pb.setWindowTitle(windowTitle)
+        self.pb.setLabelText(label)
         slicer.app.processEvents()
 
     def setPb(self, percentage, label=None, windowTitle=None):
-        slicer.progressWindow.setValue(100 - int(self.pbLeft * (1 - percentage)))
+        self.pb.setValue(100 - int(self.pbLeft * (1 - percentage)))
         if label is not None:
-            slicer.progressWindow.setLabelText(label)
+            self.pb.setLabelText(label)
         if windowTitle is not None:
-            slicer.progressWindow.setWindowTitle(windowTitle)
+            self.pb.setWindowTitle(windowTitle)
         slicer.app.processEvents()
 
     def closePb(self):
-        if slicer.progressWindow is None:
+        if self.pb is None:
             return
-        pb = slicer.progressWindow
-        slicer.progressWindow = None
+        pb = self.pb
+        self.pb = None
         pb.close()
 
     """ load/change scan related """
@@ -428,6 +431,79 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     break
             return currIdx
 
+    def getScan(self, scanPath, wait=True):
+        try:
+            return slicer.util.getNode(osp.basename(scanPath))
+        except slicer.util.MRMLNodeNotFoundException:
+            if scanPath in self._loadingScans:  # scan hasn't finished loading
+                if wait:
+                    timeout = 30
+                    while True:
+                        if scanPath not in self._loadingScans:
+                            return slicer.util.getNode(osp.basename(scanPath))
+                    print("waiting", scanPath, timeout)
+                    time.sleep(0.1)
+                    timeout -= 1
+                    if timeout == 0:
+                        return None
+                else:
+                    return None
+            else:
+                if wait:
+                    print(f"loading {scanPath}")
+                    self._loadingScans.add(scanPath)
+                    node = slicer.util.loadVolume(scanPath, properties={"show": False, "singleFile": True})
+                    node.SetName(osp.basename(scanPath))
+                    self._loadingScans.remove(scanPath)
+                    print(f"load {scanPath} finished")
+                    return node
+                else:
+
+                    def read(path):
+                        node = slicer.util.loadVolume(scanPath, properties={"show": False, "singleFile": True})
+                        node.SetName(osp.basename(path))
+                        print(path, "loaded", node)
+
+                    qt.QTimer.singleShot(random.randint(500, 1000), lambda: read(scanPath))
+
+    def manageCache(self, currIdx):
+        toKeepIdxs = [
+            self.getUndoneTaskId(currIdx, "prev"),
+            currIdx,
+            self.getUndoneTaskId(currIdx, "next"),
+        ]
+        toKeepPaths = [self._scanPaths[idx] for idx in toKeepIdxs if idx is not None]
+
+        print("tokeep", toKeepIdxs, toKeepPaths)
+
+        allVolumes = slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode")
+        for volume in allVolumes:
+            if volume.GetName() not in map(osp.basename, toKeepPaths):
+                slicer.mrmlScene.RemoveNode(volume)
+
+        for path in toKeepPaths:
+            self.getScan(path, wait=False)
+
+        # def run(path):
+        #     print("start reading", path)
+        #     time.sleep(5)
+        #     print("finish reading", path)
+        #     return path + " finished"
+
+        # path = "/home/lin/Desktop/imgnet/refine/image/"
+        # paths = [osp.join(path, p) for p in os.listdir(path)]
+        # print(paths)
+        # tasks = [LoadTask(p) for p in paths]
+        # for task in tasks:
+        #     qt.QThreadPool().start(task)
+        # print(qt.QThreadPool().activeThreadCount)
+        # p = Process(target=run, args=(paths[0],))
+        # p.start()
+        # p.join()
+        # await asyncio.sleep(1)
+        # thread = threading.Thread(target=run, args=(paths[0],))
+        # thread.start()
+
     def turnTo(self, currIdx):
         """
         Turn to the currIdx th scan, load scan and label
@@ -459,8 +535,10 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # 1. load new scan & preprocess
         image_path = self._scanPaths[currIdx]
         self.setPb(0.2, f"Loading {osp.basename(image_path)}")
-        self._currVolumeNode = slicer.util.loadVolume(image_path)
+        # self._currVolumeNode = slicer.util.loadVolume(image_path)
+        self._currVolumeNode = self.getScan(image_path)
         self._currVolumeNode.SetName(osp.basename(image_path))
+        self.manageCache(currIdx)
 
         # 2. load segmentation or create an empty one
         self.setPb(0.8, "Loading segmentation")
@@ -504,22 +582,23 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # remove: 1, 2, 4 (will be triggered when turn task)
 
         # 3. create category label from txt and segmentation
-        self.setPb(0.8, "Wrapping up")
+        self.setPb(0.8, "Syncing progress")
         self.saveProgress()
+        self.updateProgressWidgets()
 
-        # 4. set the editor as current result.
+        # 4. set image
+        self.setPb(0.9, "Preprocessing image for interactive segmentation")
+        if not TEST:
+            self.prepImage()
+
+        # 5. set the editor as current result.
+        self.setPb(0.95, "Wrapping up")
         self.ui.embeddedSegmentEditorWidget.setSegmentationNode(segmentNode)
         self.ui.embeddedSegmentEditorWidget.setMasterVolumeNode(self._currVolumeNode)
 
         self.ui.dgPositiveControlPointPlacementWidget.setEnabled(True)
         self.ui.dgNegativeControlPointPlacementWidget.setEnabled(True)
 
-        self.updateProgressWidgets()
-
-        # 5. set image
-        self.setPb(0.9, "Preprocessing image for interactive segmentation")
-        if not TEST:
-            self.prepImage()
         self.closePb()
         self._turninig = False
 
@@ -1094,7 +1173,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         Called each time the user opens this module. Not when reload/switch back.
         """
         # if TEST:
-        #     self.clearScene(clearVolume=True)
+        #     self.clearScene(clearAllVolumes=True)
 
     def exit(self):
         """
@@ -1109,6 +1188,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def onReload(self):
         self._turninig = True
+        self.clearScene(clearAllVolumes=True)
         super().onReload()
 
     def onSceneEndImport(self, caller, event):
