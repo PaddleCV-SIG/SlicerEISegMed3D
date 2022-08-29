@@ -208,8 +208,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.dgPositivePointListNodeObservers = []
         self.dgNegativePointListNode = None
         self.dgNegativePointListNodeObservers = []
-        self.pb = None
-
+        slicer.progressWindow = None
         # status var
         self._syncingCatg = False
         self._usingInteractive = False
@@ -276,14 +275,14 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # print(dir(self.ui.embeddedSegmentEditorWidget))
 
+        self.initializeFromNode()
+
         # Set place point widget colors
         self.ui.dgPositiveControlPointPlacementWidget.setNodeColor(qt.QColor(0, 255, 0))
         self.ui.dgNegativeControlPointPlacementWidget.setNodeColor(qt.QColor(255, 0, 0))
 
-        self.initializeFromNode()
-
     def init_params(self):
-        "init changble parameters here"
+        """init changble parameters here"""
         self.predictor_params_ = {"norm_radius": 2, "spatial_scale": 1.0}
         self.ratio = (512 / 880, 512 / 880, 12 / 12)  # xyz 这个形状与训练的对数据预处理的形状要一致，怎么切换不同模型？ todo： 在模块上设置预处理形状。和模型一致
         self.train_shape = (512, 512, 12)
@@ -293,63 +292,49 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.device, self.enable_mkldnn = "cpu", True
         self._currScanIdx, self._finishedPaths = self.getProgress()
 
-    def clearScene(self):
-        if self._currVolumeNode is not None:
-            slicer.mrmlScene.RemoveNode(self._currVolumeNode)
+    def clearScene(self, clearVolume=False):
+        # TODO: remove old volume
+        if clearVolume:
+            for node in slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode"):
+                slicer.mrmlScene.RemoveNode(node)
 
         segmentationNode = self.segmentationNode
         if segmentationNode is not None:
             slicer.mrmlScene.RemoveNode(segmentationNode)
 
-    """ progress related """
+    """ progress bar related """
 
-    @classmethod
-    def registerPb(cls, pb=None, windowTitle="Processing"):
-        if pb is None:
-            pb = slicer.util.createProgressDialog(windowTitle=windowTitle)
-
-        pb.setCancelButtonText("Close")
-        pb.setAutoClose(True)
-        left = 100 - pb.value
-
-        def setPb(percentage):
-            if percentage == 1 and pb.value != 100:
-                pb.value = 100
-                pb.reset()
-                pb.close()
-            else:
-                pb.value = 100 - int(left * (1 - percentage))
-
-        return pb, setPb
-
-    def initPb(self, label=None, windowTitle=None):
-        if self.pb is None:
-            self.pb = slicer.util.createProgressDialog()
-            self.pb.setCancelButtonText("Close")
-            self.pb.setAutoClose(True)
+    def initPb(self, label="Processing..", windowTitle=None):
+        if slicer.progressWindow is None:
+            slicer.progressWindow = slicer.util.createProgressDialog()
+            slicer.progressWindow.setCancelButtonText("Close")
+            slicer.progressWindow.setAutoClose(True)
+            slicer.progressWindow.show()
+            slicer.progressWindow.activateWindow()
+            slicer.progressWindow.setValue(0)
             self.pbLeft = 100
         else:
-            self.pbLeft = 100 - self.pb.value
-        if label is not None:
-            self.pb.labelText = label
+            self.pbLeft = 100 - slicer.progressWindow.value
+
         if windowTitle is not None:
-            self.pb.setWindowTitle(windowTitle)
+            slicer.progressWindow.setWindowTitle(windowTitle)
+        slicer.progressWindow.setLabelText(label)
+        slicer.app.processEvents()
 
     def setPb(self, percentage, label=None, windowTitle=None):
-        self.pb.value = 100 - int(self.pbLeft * (1 - percentage))
+        slicer.progressWindow.setValue(100 - int(self.pbLeft * (1 - percentage)))
         if label is not None:
-            self.pb.labelText = label
+            slicer.progressWindow.setLabelText(label)
         if windowTitle is not None:
-            self.pb.setWindowTitle(windowTitle)
+            slicer.progressWindow.setWindowTitle(windowTitle)
+        slicer.app.processEvents()
 
     def closePb(self):
-        if self.pb is None:
+        if slicer.progressWindow is None:
             return
-        pb = self.pb
-        self.pb = None
-        # pb.value = 100
-        pb.reset()
-        # pb.close()
+        pb = slicer.progressWindow
+        slicer.progressWindow = None
+        pb.close()
 
     """ load/change scan related """
 
@@ -359,11 +344,11 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # 1. ensure valid input
         if dataFolder is None or len(dataFolder) == 0:
-            slicer.util.delayDisplay("Please select a Data Folder first!", autoCloseMsec=5000)
+            slicer.util.errorDisplay("Please select a Data Folder first!", autoCloseMsec=5000)
             return
 
         if not osp.exists(dataFolder):
-            slicer.util.delayDisplay(f"The Data Folder( {dataFolder} ) doesn't exist!", autoCloseMsec=2000)
+            slicer.util.errorDisplay(f"The Data Folder( {dataFolder} ) doesn't exist!", autoCloseMsec=2000)
             return
 
         self.clearScene()
@@ -401,55 +386,54 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         logging.info(
             f"All scans found under {self._dataFolder} are{','.join([' '+osp.basename(p) for p in self._scanPaths])}"
         )
-        # setPb(1)
 
-    def nextScan(self, silentFail=False):
-        skipped = False
-        origIdx = currIdx = self._currScanIdx
-        while True:
-            if currIdx >= len(self._scanPaths) - 1:
-                currIdx = origIdx
-                if not silentFail:
-                    slicer.util.errorDisplay(f"This is the last{' unannotated ' if skipped else ' '}scan. No next scan")
-                return False
-            currIdx += 1
-            if self._scanPaths[currIdx] not in self._finishedPaths:
-                break
-            skipped = True
-
+    def nextScan(self, silentFail=False, skipSave=False):
+        nextIdx = self.getUndoneTaskId(self._currScanIdx, "next")
+        if nextIdx is None:
+            if not silentFail:
+                slicer.util.errorDisplay(f"This is the last unannotated scan. No next scan")
+            return False
         self._lastTurnNextScan = True
-        self.turnTo(currIdx)
+        self.turnTo(nextIdx, skipSave)
         return True
 
-    def prevScan(self, silentFail=False):
-        skipped = False
-        origIdx = currIdx = self._currScanIdx
-        while True:
-            if currIdx <= 0:
-                currIdx = origIdx
-                if not silentFail:
-                    slicer.util.errorDisplay(
-                        f"This is the first{' unannotated 'if skipped else ' ' }scan. No previous scan"
-                    )
-                return False
-            currIdx -= 1
-            if self._scanPaths[currIdx] not in self._finishedPaths:
-                break
-            skipped = True
-
+    def prevScan(self, silentFail=False, skipSave=False):
+        prevIdx = self.getUndoneTaskId(self._currScanIdx, "prev")
+        if prevIdx is None:
+            if not silentFail:
+                slicer.util.errorDisplay(f"This is the first unannotated scan. No previous scan")
+            return False
         self._lastTurnNextScan = False
-        self.turnTo(currIdx)
+        self.turnTo(prevIdx, skipSave)
         return True
 
-    def turnTo(self, currIdx):
+    def getUndoneTaskId(self, currIdx, direction):
+        if direction == "next":
+            while True:
+                if currIdx >= len(self._scanPaths) - 1:
+                    return None
+                currIdx += 1
+                if self._scanPaths[currIdx] not in self._finishedPaths:
+                    break
+            return currIdx
+        else:
+            while True:
+                if currIdx <= 0:
+                    return None
+                currIdx -= 1
+                if self._scanPaths[currIdx] not in self._finishedPaths:
+                    break
+            return currIdx
+
+    def turnTo(self, currIdx, skipSave=False):
         """
         Turn to the currIdx th scan, load scan and label
         """
-        # 0. ensure valid status and clear scene
+        # 0. clear nodes from previous task and prepare states
         self.initPb("Preparing to load", "Load scan and label")
         self.setPb(0.1)
 
-        if self.segmentation is not None:
+        if not skipSave and self.segmentation is not None:
             self.saveSegmentation()
         if self._usingInteractive:
             self.exitInteractiveMode()
@@ -468,11 +452,10 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._currScanIdx = currIdx
 
         # 1. load new scan & preprocess
-        self.setPb(0.2, "Loading image")
         image_path = self._scanPaths[currIdx]
+        self.setPb(0.2, f"Loading {osp.basename(image_path)}")
         self._currVolumeNode = slicer.util.loadVolume(image_path)
-        self._currVolumeNode.SetName(osp.basename(image_path).split(".")[0])
-
+        self._currVolumeNode.SetName(osp.basename(image_path))
         # 2. load segmentation or create an empty one
         self.setPb(0.8, "Loading segmentation")
         dot_pos = image_path.find(".")
@@ -501,6 +484,9 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.catgTxt2Segmentation()
         self.catgSegmentation2Txt()
         self.saveProgress()
+
+        for idx, segment in enumerate(self.segments):
+            segment.SetColor(colors[idx % len(colors)])
 
         # 4. set the editor as current result.
         self.ui.embeddedSegmentEditorWidget.setSegmentationNode(segmentNode)
@@ -618,11 +604,11 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.segmentation.AddEmptySegment("", name)
 
         # 4. set colors
-        nameAndSegId = []
-        segmentation = self.segmentation
-        for segId in segmentation.GetSegmentIDs():
-            nameAndSegId.append([segmentation.GetSegment(segId).GetName(), segId])
-        nameAndSegId.sort(key=lambda pair: pair[0])
+        # nameAndSegId = []
+        # segmentation = self.segmentation
+        # for segId in segmentation.GetSegmentIDs():
+        #     nameAndSegId.append([segmentation.GetSegment(segId).GetName(), segId])
+        # nameAndSegId.sort(key=lambda pair: pair[0])
 
         # for idx, (name, segId) in enumerate(nameAndSegId):
         #     segmentation.GetSegment(segId).SetColor(colors[idx % len(colors)])
@@ -653,7 +639,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.recordCatg()
         self._syncingCatg = False
 
-    """ progress related """
+    """ task progress related """
 
     def saveProgress(self):
         configPath = self.configPath
@@ -887,7 +873,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         try:
             self.inference_predictor.set_input_image(self.input_data)
         except AttributeError:
-            slicer.util.delayDisplay("Please load model first", autoCloseMsec=1200)
+            slicer.util.errorDisplay("Please load model first", autoCloseMsec=1200)
 
     def infer_image(self, click_position=None, positive_click=True, pred_thr=0.49):
         """
@@ -957,9 +943,9 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._finishedPaths.append(self._scanPaths[self._currScanIdx])
         self.saveProgress()
         if self._lastTurnNextScan:
-            self.nextScan()
+            self.nextScan(skipSave=True)
         else:
-            self.prevScan()
+            self.prevScan(skipSave=True)
 
     def saveSegmentation(self):
         """
@@ -992,7 +978,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         colorTableNode.SetNamesInitialised(True)
 
         for segment in self.segments:
-            print(segment.GetLabelValue(), segment.GetName(), *segment.GetColor(), 1.0)
             colorTableNode.SetColor(segment.GetLabelValue(), segment.GetName(), *segment.GetColor(), 1.0)
 
         labelmapVolumeNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
@@ -1005,12 +990,11 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             segmentation.EXTENT_UNION_OF_EFFECTIVE_SEGMENTS,
             colorTableNode,
         )
-        print("here")
-
         res = slicer.util.saveNode(labelmapVolumeNode, labelPath)
-        print("end")
+        slicer.mrmlScene.RemoveNode(colorTableNode)
         if res:
-            slicer.util.delayDisplay(f"{labelPath.split('/')[-1]} save successfully.", autoCloseMsec=1200)
+            # slicer.util.delayDisplay(f"{labelPath.split('/')[-1]} save successfully.", autoCloseMsec=1200)
+            logging.info(f"{labelPath.split('/')[-1]} save successfully.")
         else:
             slicer.util.errorDisplay(f"{labelPath.split('/')[-1]} save failed!")
 
@@ -1032,7 +1016,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         Called when the application closes and the module widget is destroyed.
         """
-        # print("cleanup")
         self.clearScene()
         self.removeObservers()
         self.resetPointList(
@@ -1052,12 +1035,15 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         Called each time the user opens this module. Not when reload/switch back.
         """
-        pass
+        print("Enter called")
+        # if TEST:
+        #     self.clearScene(clearVolume=True)
 
     def exit(self):
         """
         Called each time the user opens a different module.
         """
+        print("exit called")
         # Do not react to parameter node changes (GUI wlil be updated when the user enters into the module)
         self.removeObserver(
             self._parameterNode,
@@ -1066,19 +1052,24 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         )
 
     def onSceneEndImport(self, caller, event):
+        # print("Endimport called")
+        """
+        Called after reload and after scan/segmentation is imported
+        """
         if self._endImportProcessing:
             return
 
         self._endImportProcessing = True
+        # print("endimport", caller, event)
         self._endImportProcessing = False
 
     def onSceneStartClose(self, caller, event):
         """
         Called just before the scene is closed.
         """
+        print("start close called")
         # Parameter node will be reset, do not use it anymore
-        self._currVolumeNode = None
-        # self.saveOrReadCurrIdx(saveFlag=True)
+        self.saveProgress()
 
         self.setParameterNode(None)
         self.resetPointList(
@@ -1093,12 +1084,12 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.dgNegativePointListNodeObservers,
         )
         self.dgNegativePointListNode = None
-        self.clearScene()
 
     def onSceneEndClose(self, caller, event):
         """
         Called just after the scene is closed.
         """
+        print("end close called")
         # If this module is shown while the scene is closed then recreate a new parameter node immediately
         if self.parent.isEntered:
             self.initializeParameterNode()

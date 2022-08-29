@@ -73,7 +73,11 @@
       </widget>
      </item>
      <item>
-      <widget class="ctkDirectoryButton" name="dataFolderButton"/>
+      <widget class="ctkDirectoryButton" name="dataFolderButton">
+       <property name="options">
+        <set>ctkDirectoryButton::HideNameFilterDetails|ctkDirectoryButton::ReadOnly</set>
+       </property>
+      </widget>
      </item>
     </layout>
    </item>
