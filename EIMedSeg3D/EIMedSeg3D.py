@@ -491,7 +491,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 segment.SetName(f"Segment_{segment.GetLabelValue()}")
 
         # 3. create category label from txt and segmentation
-        self.setPb(0.9, "Wrapping up")
+        self.setPb(0.8, "Wrapping up")
         self.catgTxt2Segmentation()
         self.catgSegmentation2Txt()
         self.saveProgress()
@@ -507,6 +507,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.dgNegativeControlPointPlacementWidget.setEnabled(True)
 
         # 5. set image
+        self.setPb(0.9, "Preprocessing image for interactive segmentation")
         if not TEST:
             self.prepImage()
         self.closePb()
@@ -650,7 +651,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 catgs[name] = segment.GetLabelValue()
 
         # delete category
-        deletedCatgLv = set(labelValues) - set([segment.GetLabelValue() for segment in self.segments])
+        deletedCatgLv = set(self._prev_catg.values()) - set([segment.GetLabelValue() for segment in self.segments])
         deletedCatgName = []
         for name, lv in catgs.items():
             if lv in deletedCatgLv:
@@ -979,7 +980,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         catgs = self.getCatgFromTxt()
         segmentationNode = self.segmentationNode
         segmentation = segmentationNode.GetSegmentation()
-        # print(dir(segmentation))
 
         for segment in self.segments:
             name = segment.GetName()
@@ -991,17 +991,17 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         labelPath = scanPath[:dotPos] + "_label" + scanPath[dotPos:]
 
         # 3. save
-        # colorTableNode = slicer.vtkMRMLColorTableNode()
         colorTableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLColorTableNode")
         colorTableNode.SetTypeToUser()
-        colorTableNode.SetNumberOfColors(max(catgs.values()) + 1)
-        # colorTableNode.SetNumberOfColors(128)
+        colorTableNode.SetNumberOfColors(len(self.segmentation.GetSegmentIDs()))
         slicer.mrmlScene.AddNode(colorTableNode)
         colorTableNode.UnRegister(None)
         colorTableNode.SetNamesInitialised(True)
 
         for segment in self.segments:
             colorTableNode.SetColor(segment.GetLabelValue(), segment.GetName(), *segment.GetColor(), 1.0)
+            print(segment.GetName(), segment.GetLabelValue())
+            print(dir(segment))
 
         labelmapVolumeNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
 
@@ -1013,8 +1013,11 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             segmentation.EXTENT_UNION_OF_EFFECTIVE_SEGMENTS,
             colorTableNode,
         )
-        res = slicer.util.saveNode(labelmapVolumeNode, labelPath)
         slicer.mrmlScene.RemoveNode(colorTableNode)
+
+        print(dir(self.segmentation))
+        res = slicer.util.saveNode(labelmapVolumeNode, labelPath)
+
         if res:
             # slicer.util.delayDisplay(f"{labelPath.split('/')[-1]} save successfully.", autoCloseMsec=1200)
             logging.info(f"{labelPath.split('/')[-1]} save successfully.")
