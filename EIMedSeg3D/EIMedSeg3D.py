@@ -644,6 +644,16 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             return None
         return osp.join(self._dataFolder, "EIMedSeg3D.json")
 
+    def getConfig(self):
+        skeleton = {"labels": [], "finished": [], "leftOff": ""}
+        if not osp.exists(self.configPath):
+            return skeleton
+        try:
+            config = json.loads(open(self.configPath, "r").read())
+            return config
+        except:
+            return skeleton
+
     def getSegmentId(self, segment):
         segmentation = self.segmentation
         for segId in segmentation.GetSegmentIDs():
@@ -656,11 +666,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         Returns:
             dict: {name: labelValue, ... }
         """
-
-        if not osp.exists(self.configPath):
-            return {}
-
-        config = json.loads(open(self.configPath, "r").read())
+        config = self.getConfig()
         catg = {}
         for info in config.get("labels", []):
             catg[info["name"]] = int(info["labelValue"])
@@ -740,10 +746,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._prevCatg = {segId: segmentation.GetSegment(segId).GetName() for segId in segmentation.GetSegmentIDs()}
 
         # 4. write to file
-        if not osp.exists(self.configPath):
-            config = {"labels": [], "finished": []}
-        else:
-            config = json.loads(open(self.configPath, "r").read())
+        config = self.getConfig()
         config["labels"] = [{"name": name, "labelValue": value} for name, value in name2value.items()]
         print(json.dumps(config), file=open(self.configPath, "w"))
 
@@ -752,23 +755,15 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     """ task progress related """
 
     def saveProgress(self):
-        configPath = self.configPath
-        if not osp.exists(configPath):
-            config = {}
-        else:
-            config = json.loads(open(configPath, "r").read())
+        config = self.getConfig()
         relpath = lambda path: osp.relpath(path, self._dataFolder)
         config["finished"] = [relpath(p) for p in self._finishedPaths]
         config["leftOff"] = relpath(self._scanPaths[self._currScanIdx])
 
-        print(json.dumps(config), file=open(configPath, "w"))
+        print(json.dumps(config), file=open(self.configPath, "w"))
 
     def getProgress(self):
-        configPath = self.configPath
-        if configPath is None or not osp.exists(configPath):
-            return 0, []
-        with open(configPath, "r") as f:
-            config = json.loads(f.read())
+        config = self.getConfig()
         leftOffIdx = 0
         if "leftOff" in config.keys():
             for idx, p in enumerate(self._scanPaths):
