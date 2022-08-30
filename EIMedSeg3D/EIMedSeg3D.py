@@ -455,14 +455,12 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     node = slicer.util.loadVolume(scanPath, properties={"show": False, "singleFile": True})
                     node.SetName(osp.basename(scanPath))
                     self._loadingScans.remove(scanPath)
-                    print(f"load {scanPath} finished")
                     return node
                 else:
 
                     def read(path):
                         node = slicer.util.loadVolume(scanPath, properties={"show": False, "singleFile": True})
                         node.SetName(osp.basename(path))
-                        print(path, "loaded", node)
 
                     qt.QTimer.singleShot(random.randint(500, 1000), lambda: read(scanPath))
 
@@ -483,26 +481,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         for path in toKeepPaths:
             self.getScan(path, wait=False)
-
-        # def run(path):
-        #     print("start reading", path)
-        #     time.sleep(5)
-        #     print("finish reading", path)
-        #     return path + " finished"
-
-        # path = "/home/lin/Desktop/imgnet/refine/image/"
-        # paths = [osp.join(path, p) for p in os.listdir(path)]
-        # print(paths)
-        # tasks = [LoadTask(p) for p in paths]
-        # for task in tasks:
-        #     qt.QThreadPool().start(task)
-        # print(qt.QThreadPool().activeThreadCount)
-        # p = Process(target=run, args=(paths[0],))
-        # p.start()
-        # p.join()
-        # await asyncio.sleep(1)
-        # thread = threading.Thread(target=run, args=(paths[0],))
-        # thread.start()
 
     def turnTo(self, currIdx):
         """
@@ -598,6 +576,15 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.ui.dgPositiveControlPointPlacementWidget.setEnabled(True)
         self.ui.dgNegativeControlPointPlacementWidget.setEnabled(True)
+
+        # 6. change button state
+        print(
+            self._currScanIdx,
+            self.getUndoneTaskId(self._currScanIdx, "prev"),
+            self.getUndoneTaskId(self._currScanIdx, "next"),
+        )
+        self.ui.prevScanButton.setEnabled(self.getUndoneTaskId(self._currScanIdx, "prev") is not None)
+        self.ui.nextScanButton.setEnabled(self.getUndoneTaskId(self._currScanIdx, "next") is not None)
 
         self.closePb()
         self._turninig = False
@@ -904,8 +891,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.dgPositiveControlPointPlacementWidget.deleteAllPoints()
         self.ui.dgNegativeControlPointPlacementWidget.deleteAllPoints()
 
+        self.ui.dgPositiveControlPointPlacementWidget.placeButton().setChecked(False)
         self.ui.dgNegativeControlPointPlacementWidget.placeButton().setChecked(False)
-
         self.ui.embeddedSegmentEditorWidget.setDisabled(False)
         self.ui.finishSegmentButton.setEnabled(False)
 
@@ -948,7 +935,9 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         segmentId = self.ui.embeddedSegmentEditorWidget.currentSegmentID()
         segment = segmentation.GetSegment(segmentId)
 
-        logging.info("Current segment: ", self.getSegmentId(segment), segment.GetName(), segment.GetLabelValue())
+        logging.info(
+            f"Current segment: {self.getSegmentId(segment)} {segment.GetName()} {segment.GetLabelValue()}",
+        )
 
         with slicer.util.tryWithErrorDisplay("Failed to run inference.", waitCursor=True):
             self.setPb(0.2, "Running inference")
