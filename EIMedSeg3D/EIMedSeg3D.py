@@ -190,8 +190,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         ScriptedLoadableModuleWidget.__init__(self, parent)
         VTKObservationMixin.__init__(self)  # needed for parameter node observation
 
-        print(dir(self))
-
         self.logic = None
         self._parameterNode = None
         # data var
@@ -238,11 +236,15 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.logic = EIMedSeg3DLogic()
 
         # Connections
-
         # These connections ensure that we update parameter node when scene is closed
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.StartCloseEvent, self.onSceneStartClose)
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.EndCloseEvent, self.onSceneEndClose)
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.NodeAddedEvent, self.onSceneEndImport)
+
+        # def test(*args):
+        #     print("start", args)
+
+        # self.addObserver(slicer.mrmlScene, slicer.mrmlScene.StartEvent, test)
 
         # TODO: is syncing settings between node and gui on show/scenestart/... necessary
 
@@ -252,7 +254,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.prevScanButton.connect("clicked(bool)", lambda p: self.prevScan())
         self.ui.finishScanButton.connect("clicked(bool)", self.finishScan)
         self.ui.finishSegmentButton.connect("clicked(bool)", self.exitInteractiveMode)
-        self.ui.opacitySlider.connect("valueChanged(double)", self.setSegmentationOpacity)
+        self.ui.opacitySlider.connect("valueChanged(double)", self.opacityUi2Display)
         self.ui.dataFolderButton.connect("directoryChanged(QString)", self.loadScans)
         self.ui.skipFinished.connect("clicked(bool)", self.skipFinishedToggled)
 
@@ -1120,6 +1122,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         catgs = self.getCatgFromFile()
         segmentationNode = self.segmentationNode
+        print("segmentationNode", segmentationNode)
         segmentation = segmentationNode.GetSegmentation()
 
         # 2. prepare save path
@@ -1163,13 +1166,22 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     """ display related """
 
-    def setSegmentationOpacity(self):
-        if self.segmentationNode is None:
+    def opacityUi2Display(self):
+        segmentationNode = self.segmentationNode
+        if segmentationNode is None:
             return
         threshold = self.ui.opacitySlider.value
-        displayNode = slicer.util.getNode("EIMedSeg3DSegmentation").GetDisplayNode()
+        displayNode = segmentationNode.GetDisplayNode()
         displayNode.SetOpacity3D(threshold)  # Set opacity for 3d render
         displayNode.SetOpacity(threshold)  # Set opacity for 2d
+
+    def opacityDisplay2Ui(self):
+        segmentationNode = self.segmentationNode
+        if segmentationNode is not None:
+            displayNode = segmentationNode.GetDisplayNode()
+            if displayNode is not None:
+                opacity = displayNode.GetOpacity()
+                self.ui.opacitySlider.value = opacity
 
     """ life cycle related """
 
@@ -1177,6 +1189,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         Called when the application closes and the module widget is destroyed.
         """
+        self._turninig = True
         self.clearScene(clearAllVolumes=True)
         self.removeObservers()
         self.resetPointList(
@@ -1211,8 +1224,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         )
 
     def onReload(self):
-        self._turninig = True
-        self.clearScene(clearAllVolumes=True)
+        self.cleanup()
         super().onReload()
 
     def onSceneEndImport(self, caller, event):
@@ -1221,8 +1233,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         if self._endImportProcessing:
             return
-
         self._endImportProcessing = True
+
         self._endImportProcessing = False
 
     def onSceneStartClose(self, caller, event):

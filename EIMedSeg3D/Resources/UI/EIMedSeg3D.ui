@@ -21,7 +21,6 @@
         </property>
         <layout class="QVBoxLayout" name="verticalLayout">
             <item>
-
                 <widget class="ctkCollapsibleButton" name="modelSettingsCollapse">
                     <property name="text">
                         <string>Model Settings</string>
@@ -70,9 +69,7 @@
                         </item>
                     </layout>
                 </widget>
-
             </item>
-
             <item>
                 <widget class="Line" name="line_2">
                     <property name="orientation">
@@ -273,7 +270,7 @@
                                     <bool>false</bool>
                                 </property>
                                 <property name="switchToSegmentationsButtonVisible">
-                                    <bool>false</bool>
+                                    <bool>true</bool>
                                 </property>
                                 <property name="effectColumnCount">
                                     <number>3</number>
