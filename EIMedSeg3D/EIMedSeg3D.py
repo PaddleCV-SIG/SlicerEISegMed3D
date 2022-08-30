@@ -484,7 +484,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
                     qt.QTimer.singleShot(random.randint(500, 1000), lambda: read(scanPath))
 
-    def manageCache(self, currIdx):
+    def manageCache(self, currIdx, skipPreload=False):
         toKeepIdxs = [
             self.getTurnToTaskId(currIdx, "prev"),
             currIdx,
@@ -502,10 +502,15 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         for path in toKeepPaths:
             self.getScan(path, wait=False)
 
-    def turnTo(self, currIdx):
+    def turnTo(self, turnToIdx, skipPreload=False):
         """
-        Turn to the currIdx th scan, load scan and label
+        Turn to the turnToIdx th scan, load scan and label
         """
+        if turnToIdx == self._currScanIdx:
+            return False
+        if self._turninig:
+            return
+
         self._turninig = True
         # 0. clear nodes from previous task and prepare states
         self.initPb("Preparing to load", "Load scan and label")
@@ -519,24 +524,25 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if len(self._scanPaths) == 0:
             slicer.util.errorDisplay("No scan found, please load scans first.", autoCloseMsec=2000)
             self.closePb()
+            self._turninig = False
             return
 
-        logging.info(f"Turning to the {currIdx}th scan, path is {self._scanPaths[currIdx]}")
+        logging.info(f"Turning to the {turnToIdx}th scan, path is {self._scanPaths[turnToIdx]}")
 
         self.ui.dgPositiveControlPointPlacementWidget.setEnabled(False)
         self.ui.dgNegativeControlPointPlacementWidget.setEnabled(False)
 
         self.clearScene()  # remove segmentation node and control points
-        self._currScanIdx = currIdx
+        self._currScanIdx = turnToIdx
 
         slicer.app.processEvents()
         # 1. load new scan & preprocess
-        image_path = self._scanPaths[currIdx]
+        image_path = self._scanPaths[turnToIdx]
         self.setPb(0.2, f"Loading {osp.basename(image_path)}")
         # self._currVolumeNode = slicer.util.loadVolume(image_path)
         self._currVolumeNode = self.getScan(image_path)
         self._currVolumeNode.SetName(osp.basename(image_path))
-        self.manageCache(currIdx)
+        self.manageCache(turnToIdx, skipPreload=skipPreload)
 
         # 2. load segmentation or create an empty one
         self.setPb(0.8, "Loading segmentation")
@@ -779,21 +785,32 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.saveProgress()
             self.updateProgressWidgets()
 
+        def pathDoubleClicked(row, col):
+            if self._currScanIdx == row:
+                return
+            if col != 1:
+                return
+            # if self._scanPaths[row] in self._finishedPaths and self.ui.skipFinished.checked:
+            #     if slicer.util.confirmOkCancelDisplay(
+            #         f"Scan {osp.basename(self._scanPaths[row])} is already annotated. Do you want to turn off Skip Finished Scans function?"
+            #     ):
+            #         self.ui.skipFinished.setChecked(False)
+            self.turnTo(row, skipPreload=True)
+
         table = self.ui.progressTable
         table.setRowCount(len(self._scanPaths))
         for idx, path in enumerate(self._scanPaths):
             layout = qt.QVBoxLayout()
             checkbox = qt.QCheckBox()
             checkbox.setChecked(path in self._finishedPaths)
-
             checkbox.toggled.connect(partial(toggleFinished, idx))
             layout.addWidget(checkbox)
             wrapper = qt.QWidget()
             wrapper.setLayout(layout)
             table.setCellWidget(idx, 0, wrapper)
-
             table.setItem(idx, 1, qt.QTableWidgetItem(osp.relpath(path, self._dataFolder)))
 
+        table.cellDoubleClicked.connect(pathDoubleClicked)
         table.resizeColumnsToContents()
 
         # ugly fix. second colum wont strength after setting data
