@@ -18,7 +18,6 @@ from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
 # when test, wont use any paddle related funcion
-# TODO: make sure this works
 TEST = True
 if not TEST:
     try:
@@ -253,6 +252,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.finishSegmentButton.connect("clicked(bool)", self.exitInteractiveMode)
         self.ui.opacitySlider.connect("valueChanged(double)", self.setSegmentationOpacity)
         self.ui.dataFolderButton.connect("directoryChanged(QString)", self.loadScans)
+        self.ui.skipFinished.connect("clicked(bool)", self.skipFinishedToggled)
 
         # positive/negative control point
         self.ui.dgPositiveControlPointPlacementWidget.setMRMLScene(slicer.mrmlScene)
@@ -302,6 +302,11 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             slicer.mrmlScene.RemoveNode(segmentationNode)
 
     """ progress bar related """
+
+    def skipFinishedToggled(self, skipFinished):
+        self.togglePrevNextBtn(self._currScanIdx)
+        if not skipFinished and self._currVolumeNode is None:
+            self.turnTo(self._currScanIdx)
 
     def initPb(self, label="Processing..", windowTitle=None):
         if self.pb is None:
@@ -372,9 +377,12 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._currScanIdx, self._finishedPaths = self.getProgress()
         self.updateProgressWidgets()
 
-        if len(set(self._scanPaths) - set(self._finishedPaths)) == 0:
+        if len(set(self._scanPaths) - set(self._finishedPaths)) == 0 and self.ui.skipFinished.checked:
             self.closePb()
-            slicer.util.delayDisplay(f"All {len(self._scanPaths)} scans have been annotated!", 4000)
+            slicer.util.delayDisplay(
+                f"All {len(self._scanPaths)} scans have been annotated!\nUncheck Skip Finished Scans to browse through them.",
+                4000,
+            )
             return
 
         self.setPb(0.6, "Loading Scan and label")
@@ -391,10 +399,17 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             f"All scans found under {self._dataFolder} are{','.join([' '+osp.basename(p) for p in self._scanPaths])}"
         )
 
+    def togglePrevNextBtn(self, currIdx):
+        if currIdx is None:
+            return
+        self.ui.prevScanButton.setEnabled(self.getTurnToTaskId(currIdx, "prev") is not None)
+        self.ui.nextScanButton.setEnabled(self.getTurnToTaskId(currIdx, "next") is not None)
+
     def nextScan(self, silentFail=False):
         self.saveSegmentation()
-        nextIdx = self.getUndoneTaskId(self._currScanIdx, "next")
+        nextIdx = self.getTurnToTaskId(self._currScanIdx, "next")
         if nextIdx is None:
+            self.ui.nextScanButton.setEnabled(False)
             if not silentFail:
                 slicer.util.errorDisplay(f"This is the last unannotated scan. No next scan")
             return False
@@ -404,8 +419,9 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def prevScan(self, silentFail=False):
         self.saveSegmentation()
-        prevIdx = self.getUndoneTaskId(self._currScanIdx, "prev")
+        prevIdx = self.getTurnToTaskId(self._currScanIdx, "prev")
         if prevIdx is None:
+            self.ui.prevScanButton.setEnabled(False)
             if not silentFail:
                 slicer.util.errorDisplay(f"This is the first unannotated scan. No previous scan")
             return False
@@ -413,12 +429,16 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.turnTo(prevIdx)
         return True
 
-    def getUndoneTaskId(self, currIdx, direction):
+    def getTurnToTaskId(self, currIdx, direction, skipFinished=None):
+        if skipFinished is None:
+            skipFinished = self.ui.skipFinished.checked
         if direction == "next":
             while True:
                 if currIdx >= len(self._scanPaths) - 1:
                     return None
                 currIdx += 1
+                if not skipFinished:
+                    break
                 if self._scanPaths[currIdx] not in self._finishedPaths:
                     break
             return currIdx
@@ -427,6 +447,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 if currIdx <= 0:
                     return None
                 currIdx -= 1
+                if not skipFinished:
+                    break
                 if self._scanPaths[currIdx] not in self._finishedPaths:
                     break
             return currIdx
@@ -466,9 +488,9 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def manageCache(self, currIdx):
         toKeepIdxs = [
-            self.getUndoneTaskId(currIdx, "prev"),
+            self.getTurnToTaskId(currIdx, "prev"),
             currIdx,
-            self.getUndoneTaskId(currIdx, "next"),
+            self.getTurnToTaskId(currIdx, "next"),
         ]
         toKeepPaths = [self._scanPaths[idx] for idx in toKeepIdxs if idx is not None]
 
@@ -578,13 +600,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.dgNegativeControlPointPlacementWidget.setEnabled(True)
 
         # 6. change button state
-        print(
-            self._currScanIdx,
-            self.getUndoneTaskId(self._currScanIdx, "prev"),
-            self.getUndoneTaskId(self._currScanIdx, "next"),
-        )
-        self.ui.prevScanButton.setEnabled(self.getUndoneTaskId(self._currScanIdx, "prev") is not None)
-        self.ui.nextScanButton.setEnabled(self.getUndoneTaskId(self._currScanIdx, "next") is not None)
+        self.togglePrevNextBtn(currIdx)
 
         self.closePb()
         self._turninig = False
@@ -708,7 +724,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # delete
         for segmentId in set(self._prevCatg.keys()) - set(segmentation.GetSegmentIDs()):
-            logging.info("deleting segment", segmentId, self.segmentation.GetSegment(segmentId))
+            logging.info(f"deleting segment {segmentId} {self.segmentation.GetSegment(segmentId)}")
             del name2value[self._prevCatg[segmentId]]
 
         # 3. record catg info
@@ -784,6 +800,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # ugly fix. second colum wont strength after setting data
         self.ui.progressCollapse.toggle()
         self.ui.progressCollapse.toggle()
+
+        self.togglePrevNextBtn(self._currScanIdx)
 
     """ control point related """
 

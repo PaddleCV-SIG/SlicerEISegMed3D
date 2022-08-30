@@ -88,6 +88,16 @@
     </layout>
    </item>
    <item>
+    <widget class="QCheckBox" name="skipFinished">
+     <property name="text">
+      <string>Skip Finished Scans</string>
+     </property>
+     <property name="checked">
+      <bool>false</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
     <layout class="QHBoxLayout" name="prevNextLayout">
      <item>
       <widget class="QPushButton" name="prevScanButton">
