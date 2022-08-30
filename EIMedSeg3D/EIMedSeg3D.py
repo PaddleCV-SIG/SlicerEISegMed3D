@@ -190,6 +190,8 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         ScriptedLoadableModuleWidget.__init__(self, parent)
         VTKObservationMixin.__init__(self)  # needed for parameter node observation
 
+        print(dir(self))
+
         self.logic = None
         self._parameterNode = None
         # data var
@@ -567,7 +569,9 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.catgSegmentation2File()
 
         for idx, segment in enumerate(self.segments):
-            print(f"setting color for segment name: {segment.GetName()}, color: {colors[idx % len(colors)]}")
+            # print(f"setting color for segment name: {segment.GetName()}, color: {colors[idx % len(colors)]}")
+            segment.SetColor(colors[idx % len(colors)])
+            segment.SetColor(colors[idx % len(colors)])
             segment.SetColor(colors[idx % len(colors)])
 
         def sync(*args):
@@ -1178,7 +1182,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         Called when the application closes and the module widget is destroyed.
         """
-        self.clearScene()
+        self.clearScene(clearAllVolumes=True)
         self.removeObservers()
         self.resetPointList(
             self.ui.dgPositiveControlPointPlacementWidget,
