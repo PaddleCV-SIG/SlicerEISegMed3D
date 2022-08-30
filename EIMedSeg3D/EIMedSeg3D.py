@@ -392,8 +392,6 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self._currScanIdx += 2
             self.prevScan()
 
-        self.ui.prevScanButton.setEnabled(True)
-        self.ui.nextScanButton.setEnabled(True)
         self.ui.finishScanButton.setEnabled(True)
         logging.info(
             f"All scans found under {self._dataFolder} are{','.join([' '+osp.basename(p) for p in self._scanPaths])}"
@@ -494,7 +492,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         ]
         toKeepPaths = [self._scanPaths[idx] for idx in toKeepIdxs if idx is not None]
 
-        print("tokeep", toKeepIdxs, toKeepPaths)
+        # print("tokeep", toKeepIdxs, toKeepPaths)
 
         allVolumes = slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode")
         for volume in allVolumes:
@@ -563,6 +561,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.catgSegmentation2File()
 
         for idx, segment in enumerate(self.segments):
+            print(f"setting color for segment name: {segment.GetName()}, color: {colors[idx % len(colors)]}")
             segment.SetColor(colors[idx % len(colors)])
 
         def sync(*args):
@@ -600,7 +599,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.dgNegativeControlPointPlacementWidget.setEnabled(True)
 
         # 6. change button state
-        self.togglePrevNextBtn(currIdx)
+        self.togglePrevNextBtn(self._currScanIdx)
 
         self.closePb()
         self._turninig = False
@@ -886,21 +885,22 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         segmentation = self.segmentation
         segmentId = self.ui.embeddedSegmentEditorWidget.currentSegmentID()
         segment = segmentation.GetSegment(segmentId)
-        current_mask = slicer.util.arrayFromSegmentBinaryLabelmap(
-            self.segmentationNode, segmentId, self._currVolumeNode
-        )
-        if current_mask.sum() != 0:
-            # TODO: prompt and let user choose whether to create new segment
-            segmentId = segmentation.AddEmptySegment("", segment.GetName(), segment.GetColor())
-            self.ui.embeddedSegmentEditorWidget.setCurrentSegmentID(segmentId)
+
+        if len(segmentation.GetSegmentIDs()) == 0 or len(segmentId) == 0:  # no segment or currently no active segment
+            segmentId = segmentation.AddEmptySegment("")
+        else:
+            if (
+                slicer.util.arrayFromSegmentBinaryLabelmap(self.segmentationNode, segmentId, self._currVolumeNode).sum()
+                != 0
+            ):
+                # TODO: prompt and let user choose whether to create new segment
+                segmentId = segmentation.AddEmptySegment("", segment.GetName(), segment.GetColor())
+        self.ui.embeddedSegmentEditorWidget.setCurrentSegmentID(segmentId)
 
         if not TEST:
             self.setImage()
         self.clicker = Clicker()
-        # TODO: palette
         # TODO: scroll to the new segment
-        self.ui.embeddedSegmentEditorWidget.setFocus()
-
         self.ui.embeddedSegmentEditorWidget.setDisabled(True)
         self.ui.finishSegmentButton.setEnabled(True)
         self._usingInteractive = True
@@ -944,6 +944,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         posPoints = self.getControlPointsXYZ(self.dgPositivePointListNode, "positive")
         negPoints = self.getControlPointsXYZ(self.dgNegativePointListNode, "negative")
         newPointIndex = observer.GetDisplayNode().GetActiveControlPoint()
+        print("newPointIndex", newPointIndex)
         newPointPos = self.getControlPointXYZ(observer, newPointIndex)
         isPositivePoint = False if len(posPoints) == 0 else newPointPos == posPoints[-1]
         logging.info(f"{['Negative', 'Positive'][int(isPositivePoint)]} point added at {newPointPos}")
