@@ -15,10 +15,10 @@ from inference.ops import DistMaps3D, ScaleLayer, BatchImageNormalize3D, Sigmoid
 
 class Click:
     def __init__(self, is_positive, coords, indx=None):
-        if coord is None or is_positive is None:
+        if coords is None or is_positive is None:
             raise ValueError("The coord is {}, is_positive is {} and one of them is None, but none of them should be.")
-        self.coord = coord
-        self.is_positive = isPositivePoint
+        self.coords = coords
+        self.is_positive = is_positive
         self.index = None
 
     @property
