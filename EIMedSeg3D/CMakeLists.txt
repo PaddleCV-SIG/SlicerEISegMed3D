@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------
-set(MODULE_NAME placePoint)
+set(MODULE_NAME EIMedSeg3D)
 
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
@@ -24,8 +24,8 @@ if(BUILD_TESTING)
 
   # Register the unittest subclass in the main script as a ctest.
   # Note that the test will also be available at runtime.
-  slicer_add_python_unittest(SCRIPT ${MODULE_NAME}.py)
+  # slicer_add_python_unittest(SCRIPT ${MODULE_NAME}.py)
 
   # Additional build-time testing
-  add_subdirectory(Testing)
+  # add_subdirectory(Testing)
 endif()

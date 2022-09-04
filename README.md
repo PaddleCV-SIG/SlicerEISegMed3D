@@ -1,6 +1,6 @@
-# SlicerEISeg
+# SlicerEIMedSeg3D
 
-3D slicer extension for interactive medical image segmentation
+A 3D slicer extension for performing **E**fficient **I**nteractive **Med**ical image **Seg**mentation in **3D**. Users guide a deep learning model to perform segmentation by providing positive and negative points.
 
 ## Install
 

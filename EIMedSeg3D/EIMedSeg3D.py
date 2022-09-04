@@ -74,19 +74,16 @@ class EIMedSeg3D(ScriptedLoadableModule):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = "EIMedSeg3D"  # TODO: make this more human readable by adding spaces
         self.parent.categories = [
-            "Interactive Segmentation"
+            "Segmentation"
         ]  # TODO: set categories (folders where the module shows up in the module selector)
         self.parent.dependencies = []  # TODO: add here list of module names that this module requires
-        self.parent.contributors = ["Lin Han, Daisy (Baidu Corp.)"]
+        self.parent.contributors = ["Lin Han(NYU Tandon School of Engineering), Daisy (Baidu Corp.)"]
         # TODO: update with short description of the module and a link to online module documentation
         self.parent.helpText = """
-This is an example of scripted loadable module bundled in an extension.
-See more information in <a href="https://github.com/organization/projectname#EIMedSeg3D">module documentation</a>.
+An extension to perform efficient interactive segmentation with help from deep learning. Specify model and parameter paths, load model, select a data folder and add positive or negative points to get segmentation result.
 """
         # TODO: replace with organization, grant and thanks
         self.parent.acknowledgementText = """
-This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc., Andras Lasso, PerkLab,
-and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
 """
 
         # Additional initialization step after application startup is complete
