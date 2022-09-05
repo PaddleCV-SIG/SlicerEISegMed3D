@@ -29,7 +29,7 @@ EISeg-Med3D 是一个用于智能医学图像分割的 3D Slicer 插件，通过
 ## <img src="https://user-images.githubusercontent.com/34859558/188419267-bd117697-7456-4c72-8cbe-1272264d4fe4.png" width="30"/> 特性
 * **高效**：每个类别只需数次点击直接生成3d分割结果，从此告别费时费力的手工标注。
 
-* **准确**：点击 3 点 mIOU 即可达到85% ，配合搭载机器学习算法和手动标注的标注编辑器，精度 100% 不是梦。
+* **准确**：点击 3 点 mIOU 即可达到0.85，配合搭载机器学习算法和手动标注的标注编辑器，精度 100% 不是梦。
 
 * **便捷**：四步轻松安装；标注结果、进度自动保存；标注结果透明度调整提升标注准确度；用户友好的界面交互，让你标注省心不麻烦。
 
@@ -92,6 +92,23 @@ sys.executable # 'D:/slicer/Slicer 5.0.3/bin/PythonSlicer.exe'
 </p>
 
 ### 使用步骤
+#### 0. 加载插件
+* 找到 Extension wizard 插件：
+<p align="center">
+<img src="https://user-images.githubusercontent.com/34859558/188458289-b59dc5e3-34eb-4d40-b18b-ce0b35c066c6.png" width="70.6%" height="20%">
+</p>
+
+* 点击 Select Extension，并选择到contrib/SlicerEISegMed3D目录，并点击加载对应模块，等待 Slicer 进行加载。
+<p align="center">
+<img src="https://user-images.githubusercontent.com/34859558/188458463-066ff0b6-ff80-4d0d-aca0-3b3b12f710ef.png" width="70.6%" height="20%">
+</p>
+
+* 加载完后，切换到 EISegMed3D模块。
+<p align="center">
+<img src="https://user-images.githubusercontent.com/34859558/188458684-46465fed-fdde-43dd-a97c-5da7678f3f99.png" width="70.6%" height="20%">
+</p>
+
+
 #### 1. 加载模型
 * 在```Model Settings```中加载保存在本地的模型，点击```Model Path```路径选择框后面的```...```的按钮，选择后缀名为```.pdodel```的本地文件，点击```Param Path```路径选择框后面的```...```的按钮，选择后缀名为```.pdiparams```的本地文件。
 * 点击```Load Static Model```按钮，此时会有弹窗提示```Sucessfully loaded model to gpu!```，表示模型已经加载进来。
