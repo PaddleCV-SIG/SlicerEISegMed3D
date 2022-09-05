@@ -1,15 +1,16 @@
 cmake_minimum_required(VERSION 3.16.3...3.19.7 FATAL_ERROR)
 
-project(EISeg)
+project(EIMedSeg3D)
 
 #-----------------------------------------------------------------------------
 # Extension meta-information
-set(EXTENSION_HOMEPAGE "https://www.slicer.org/wiki/Documentation/Nightly/Extensions/EISeg")
+set(EXTENSION_HOMEPAGE "https://github.com/PaddleCV-SIG/SlicerEISegMed3D")
 set(EXTENSION_CATEGORY "Segmentation")
 set(EXTENSION_CONTRIBUTORS "Shiyu Tang (Baidu Co.), Lin Han (NYU Tandon School of Engineering)")
-set(EXTENSION_DESCRIPTION "EISeg")
-set(EXTENSION_ICONURL "https://www.example.com/Slicer/Extensions/EISeg.png")
-set(EXTENSION_SCREENSHOTURLS "https://www.example.com/Slicer/Extensions/EISeg/Screenshots/1.png")
+set(EXTENSION_DESCRIPTION "A 3D slicer extension for performing Efficient Interactive Medical image Segmentation in 3D. Users guide a deep learning model to perform segmentation by providing positive and negative points.
+")
+set(EXTENSION_ICONURL "https://github.com/PaddleCV-SIG/SlicerEISegMed3D/releases/download/v0.1.0/EIMedSeg3D.png")
+set(EXTENSION_SCREENSHOTURLS "https://github.com/PaddleCV-SIG/SlicerEISegMed3D/releases/download/v0.1.0/screenshot.png")
 set(EXTENSION_DEPENDS "NA") # Specified as a list or "NA" if no dependencies
 
 #-----------------------------------------------------------------------------
