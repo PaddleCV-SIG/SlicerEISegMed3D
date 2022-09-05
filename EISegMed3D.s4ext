@@ -6,7 +6,7 @@
 
 # This is source code manager (i.e. svn)
 scm git
-scmurl https://github.com/PaddleCV-SIG/SlicerEIMedSeg3D
+scmurl https://github.com/PaddleCV-SIG/SlicerEISegMed3D
 scmrevision release
 
 # list dependencies
@@ -17,7 +17,7 @@ scmrevision release
 build_subdirectory .
 
 # homepage
-homepage https://github.com/PaddleCV-SIG/SlicerEIMedSeg3D
+homepage https://github.com/PaddleCV-SIG/SlicerEISegMed3D
 
 # Firstname1 Lastname1 ([SubOrg1, ]Org1), Firstname2 Lastname2 ([SubOrg2, ]Org2)
 # For example: Jane Roe (Superware), John Doe (Lab1, Nowhere), Joe Bloggs (Noware)
@@ -27,7 +27,7 @@ contributors Shiyu Tang (Baidu Co.), Lin Han (NYU Tandon School of Engineering)
 category Segmentation
 
 # url to icon (png, size 128x128 pixels)
-iconurl https://github.com/PaddleCV-SIG/SlicerEIMedSeg3D/releases/download/v0.1.0/EIMedSeg3D.png
+iconurl https://github.com/PaddleCV-SIG/SlicerEISegMed3D/releases/download/v0.1.0/EISegMed3D.png
 
 # Give people an idea what to expect from this code
 #  - Is it just a test or something you stand behind?
@@ -38,7 +38,7 @@ description This extension enables the user to place virtual ablation profiles a
 Guide a deep learning model to perform segmentation by providing positive and negative points.
 
 # Space separated list of urls
-screenshoturls https://github.com/PaddleCV-SIG/SlicerEIMedSeg3D/releases/download/v0.1.0/screenshot.png https://github.com/PaddleCV-SIG/SlicerEIMedSeg3D/releases/download/v0.1.0/screenshot.png
+screenshoturls https://github.com/PaddleCV-SIG/SlicerEISegMed3D/releases/download/v0.1.0/screenshot.png https://github.com/PaddleCV-SIG/SlicerEISegMed3D/releases/download/v0.1.0/screenshot.png
 
 # 0 or 1: Define if the extension should be enabled after its installation.
 enabled 1
