@@ -1,6 +1,7 @@
 import logging
 import os
 import os.path as osp
+import pathlib
 import time
 import json
 from functools import partial
@@ -18,7 +19,7 @@ from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
 # when test, wont use any paddle related funcion
-TEST = True
+TEST = osp.exists(pathlib.Path(__file__).parent.absolute() / "TEST")
 if not TEST:
     try:
         import paddle
@@ -543,10 +544,13 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # 1. load new scan & preprocess
         image_path = self._scanPaths[turnToIdx]
         self.setPb(0.2, f"Loading {osp.basename(image_path)}")
-        # self._currVolumeNode = slicer.util.loadVolume(image_path)
         self._currVolumeNode = self.getScan(image_path)
         self._currVolumeNode.SetName(osp.basename(image_path))
         self.manageCache(turnToIdx, skipPreload=skipPreload)
+
+        layoutManager = slicer.app.layoutManager()
+        for sliceViewName in layoutManager.sliceViewNames():
+            layoutManager.sliceWidget(sliceViewName).mrmlSliceNode().RotateToVolumePlane(self._currVolumeNode)
 
         # 2. load segmentation or create an empty one
         self.setPb(0.8, "Loading segmentation")
