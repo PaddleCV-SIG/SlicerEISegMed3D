@@ -63,18 +63,18 @@ colors = [
 ]
 
 #
-# EIMedSeg3D
+# EISegMed3D
 #
 
 
-class EIMedSeg3D(ScriptedLoadableModule):
+class EISegMed3D(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
-        self.parent.title = "EIMedSeg3D"  # TODO: make this more human readable by adding spaces
+        self.parent.title = "EISegMed3D"  # TODO: make this more human readable by adding spaces
         self.parent.categories = [
             "Interactive Segmentation"
         ]  # TODO: set categories (folders where the module shows up in the module selector)
@@ -83,7 +83,7 @@ class EIMedSeg3D(ScriptedLoadableModule):
         # TODO: update with short description of the module and a link to online module documentation
         self.parent.helpText = """
 This is an example of scripted loadable module bundled in an extension.
-See more information in <a href="https://github.com/organization/projectname#EIMedSeg3D">module documentation</a>.
+See more information in <a href="https://github.com/organization/projectname#EISegMed3D">module documentation</a>.
 """
         # TODO: replace with organization, grant and thanks
         self.parent.acknowledgementText = """
@@ -143,7 +143,7 @@ def registerSampleData():
     # To ensure that the source code repository remains small (can be downloaded and installed quickly)
     # it is recommended to store data sets that are larger than a few MB in a Github release.
 
-    # EIMedSeg3D1
+    # EISegMed3D1
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
         # Category and sample name displayed in Sample Data module
         category="placePoint",
@@ -161,7 +161,7 @@ def registerSampleData():
         nodeNames="placePoint1",
     )
 
-    # EIMedSeg3D2
+    # EISegMed3D2
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
         # Category and sample name displayed in Sample Data module
         category="placePoint",
@@ -177,11 +177,11 @@ def registerSampleData():
 
 
 #
-# EIMedSeg3DWidget
+# EISegMed3DWidget
 #
 
 
-class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
+class EISegMed3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     """Uses ScriptedLoadableModuleWidget base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
@@ -228,7 +228,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         ScriptedLoadableModuleWidget.setup(self)
 
         # Load widget from .ui file (created by Qt Designer).
-        uiWidget = slicer.util.loadUI(self.resourcePath("UI/EIMedSeg3D.ui"))
+        uiWidget = slicer.util.loadUI(self.resourcePath("UI/EISegMed3D.ui"))
         self.layout.addWidget(uiWidget)
         self.ui = slicer.util.childWidgetVariables(uiWidget)
         uiWidget.setMRMLScene(slicer.mrmlScene)
@@ -236,7 +236,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Create logic class. Logic implements all computations that should be possible to run
         # in batch mode, without a graphical user interface.
         # TODO: we may not need logic. user have to interact
-        self.logic = EIMedSeg3DLogic()
+        self.logic = EISegMed3DLogic()
 
         # Connections
         # These connections ensure that we update parameter node when scene is closed
@@ -566,7 +566,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         else:
             segmentNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
 
-        segmentNode.SetName("EIMedSeg3DSegmentation")
+        segmentNode.SetName("EISegMed3DSegmentation")
         segmentNode.SetReferenceImageGeometryParameterFromVolumeNode(self._currVolumeNode)
         slicer.app.processEvents()
         slicer.app.processEvents()
@@ -630,7 +630,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     @property
     def segmentationNode(self):
         try:
-            return slicer.util.getNode("EIMedSeg3DSegmentation")
+            return slicer.util.getNode("EISegMed3DSegmentation")
         except slicer.util.MRMLNodeNotFoundException:
             return None
 
@@ -653,7 +653,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def configPath(self):
         if self._dataFolder is None:
             return None
-        return osp.join(self._dataFolder, "EIMedSeg3D.json")
+        return osp.join(self._dataFolder, "EISegMed3D.json")
 
     def getConfig(self):
         skeleton = {"labels": [], "finished": [], "leftOff": ""}
@@ -672,7 +672,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 return segId
 
     def getCatgFromFile(self):
-        """Parse category info from EIMedSeg3D.json
+        """Parse category info from EISegMed3D.json
 
         Returns:
             dict: {name: labelValue, ... }
@@ -684,11 +684,11 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         return catg
 
     def catgFile2Segmentation(self):
-        """Sync category info from EIMedSeg3D.json to segmentation
+        """Sync category info from EISegMed3D.json to segmentation
 
         match by labelValue
         - create if missing
-        - correct name if segmentation differes from EIMedSeg3D.json
+        - correct name if segmentation differes from EISegMed3D.json
         """
         if self._syncingCatg:
             return
@@ -715,7 +715,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._syncingCatg = False
 
     def catgSegmentation2File(self):
-        """Sync category info from segmentation to EIMedSeg3D.json
+        """Sync category info from segmentation to EISegMed3D.json
 
         match by name
         - sync user change name
@@ -1391,9 +1391,9 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
 #
-# EIMedSeg3DLogic
+# EISegMed3DLogic
 #
-class EIMedSeg3DLogic(ScriptedLoadableModuleLogic):
+class EISegMed3DLogic(ScriptedLoadableModuleLogic):
     """This class should implement all the actual
     computation done by your module.  The interface
     should be such that other python code can import
@@ -1470,11 +1470,11 @@ class EIMedSeg3DLogic(ScriptedLoadableModuleLogic):
 
 
 #
-# EIMedSeg3DTest
+# EISegMed3DTest
 #
 
 
-class EIMedSeg3DTest(ScriptedLoadableModuleTest):
+class EISegMed3DTest(ScriptedLoadableModuleTest):
     """
     This is the test case for your scripted module.
     Uses ScriptedLoadableModuleTest base class, available at:
@@ -1488,9 +1488,9 @@ class EIMedSeg3DTest(ScriptedLoadableModuleTest):
     def runTest(self):
         """Run as few or as many tests as needed here."""
         self.setUp()
-        self.test_EIMedSeg3D1()
+        self.test_EISegMed3D1()
 
-    def test_EIMedSeg3D1(self):
+    def test_EISegMed3D1(self):
         """Ideally you should have several levels of tests.  At the lowest level
         tests should exercise the functionality of the logic with different inputs
         (both valid and invalid).  At higher levels your tests should emulate the
@@ -1509,7 +1509,7 @@ class EIMedSeg3DTest(ScriptedLoadableModuleTest):
         import SampleData
 
         registerSampleData()
-        inputVolume = SampleData.downloadSample("EIMedSeg3D1")
+        inputVolume = SampleData.downloadSample("EISegMed3D1")
         self.delayDisplay("Loaded test data set")
 
         inputScalarRange = inputVolume.GetImageData().GetScalarRange()
@@ -1521,7 +1521,7 @@ class EIMedSeg3DTest(ScriptedLoadableModuleTest):
 
         # Test the module logic
 
-        logic = EIMedSeg3DLogic()
+        logic = EISegMed3DLogic()
 
         # Test algorithm with non-inverted threshold
         logic.process(inputVolume, outputVolume, threshold, True)
