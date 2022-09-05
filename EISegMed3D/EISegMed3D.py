@@ -1056,6 +1056,10 @@ class EISegMed3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         except AttributeError:
             slicer.util.errorDisplay("Model is not loaded. Please load model first")
             return
+        except ValueError:
+            slicer.util.errorDisplay(
+                "The AI-assisted image infer process need to be run on gpu device, please install paddle with GPU enabled."
+            )
 
         tic = time.time()
         self.prepare_click(click_position, positive_click)
