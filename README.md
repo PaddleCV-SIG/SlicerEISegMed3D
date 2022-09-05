@@ -134,7 +134,7 @@ sys.executable # 'D:/slicer/Slicer 5.0.3/bin/PythonSlicer.exe'
 * 关于精细修改标注工具的使用，详细可见[Slicer Segment editor](https://slicer.readthedocs.io/en/latest/user_guide/modules/segmenteditor.html)
 
 #### 4. 切换图像
-* 点击```Pre Scan```按钮可以切换上一张图像到当前视图框内。
+* 点击```Prev Scan```按钮可以切换上一张图像到当前视图框内。
 * 点击```Next Scan```按钮可以切换下一张图像到当前视图框内。
 <p align="center">
 <img src="https://user-images.githubusercontent.com/48357642/187882440-e1c3cc03-b79e-4ad8-9987-20af42c9ae01.PNG" width="70.6%" height="20%">
