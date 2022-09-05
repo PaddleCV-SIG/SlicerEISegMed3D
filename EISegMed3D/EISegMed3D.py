@@ -19,7 +19,8 @@ from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
 # when test, wont use any paddle related funcion
-TEST = osp.exists(pathlib.Path(__file__).parent.absolute() / "TEST")
+HERE = pathlib.Path(__file__).parent.absolute()
+TEST = osp.exists(HERE / "TEST")
 if not TEST:
     logging.getLogger().setLevel(logging.ERROR)
 if not TEST:
@@ -244,11 +245,6 @@ class EISegMed3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.EndCloseEvent, self.onSceneEndClose)
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.NodeAddedEvent, self.onSceneEndImport)
 
-        # def test(*args):
-        #     print("start", args)
-
-        # self.addObserver(slicer.mrmlScene, slicer.mrmlScene.StartEvent, test)
-
         # TODO: is syncing settings between node and gui on show/scenestart/... necessary
 
         # button, slider
@@ -260,6 +256,12 @@ class EISegMed3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.opacitySlider.connect("valueChanged(double)", self.opacityUi2Display)
         self.ui.dataFolderButton.connect("directoryChanged(QString)", self.loadScans)
         self.ui.skipFinished.connect("clicked(bool)", self.skipFinishedToggled)
+
+        iconPath = HERE / "Resources" / "Icons"
+        self.ui.nextScanButton.setIcon(qt.QIcon(iconPath / "next.png"))
+        self.ui.prevScanButton.setIcon(qt.QIcon(iconPath / "prev.png"))
+        self.ui.finishSegmentButton.setIcon(qt.QIcon(iconPath / "done.png"))
+        self.ui.finishScanButton.setIcon(qt.QIcon(iconPath / "save.png"))
 
         # positive/negative control point
         self.ui.dgPositiveControlPointPlacementWidget.setMRMLScene(slicer.mrmlScene)
@@ -300,13 +302,10 @@ class EISegMed3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.device, self.enable_mkldnn = "gpu", True
 
     def clearScene(self, clearAllVolumes=False):
-        # TODO: remove old volume
         if clearAllVolumes:
             for node in slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode"):
                 slicer.mrmlScene.RemoveNode(node)
 
-        # if self._currVolumeNode is not None:
-        #     slicer.mrmlScene.RemoveNode(self._currVolumeNode)
         segmentationNode = self.segmentationNode
         if segmentationNode is not None:
             slicer.mrmlScene.RemoveNode(segmentationNode)
@@ -617,12 +616,11 @@ class EISegMed3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # 6. change button state
         self.togglePrevNextBtn(self._currScanIdx)
-        
+
         layoutManager = slicer.app.layoutManager()
         for sliceViewName in layoutManager.sliceViewNames():
             layoutManager.sliceWidget(sliceViewName).mrmlSliceNode().RotateToVolumePlane(self._currVolumeNode)
         slicer.util.resetSliceViews()
-
 
         self.closePb()
         self._turninig = False
@@ -802,11 +800,6 @@ class EISegMed3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 return
             if col != 1:
                 return
-            # if self._scanPaths[row] in self._finishedPaths and self.ui.skipFinished.checked:
-            #     if slicer.util.confirmOkCancelDisplay(
-            #         f"Scan {osp.basename(self._scanPaths[row])} is already annotated. Do you want to turn off Skip Finished Scans function?"
-            #     ):
-            #         self.ui.skipFinished.setChecked(False)
             self.turnTo(row, skipPreload=True)
 
         table = self.ui.progressTable
