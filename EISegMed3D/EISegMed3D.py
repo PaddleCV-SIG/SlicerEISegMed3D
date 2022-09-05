@@ -553,10 +553,6 @@ class EISegMed3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._currVolumeNode.SetName(osp.basename(image_path))
         self.manageCache(turnToIdx, skipPreload=skipPreload)
 
-        layoutManager = slicer.app.layoutManager()
-        for sliceViewName in layoutManager.sliceViewNames():
-            layoutManager.sliceWidget(sliceViewName).mrmlSliceNode().RotateToVolumePlane(self._currVolumeNode)
-
         # 2. load segmentation or create an empty one
         self.setPb(0.8, "Loading segmentation")
         dot_pos = image_path.find(".")
@@ -621,6 +617,12 @@ class EISegMed3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # 6. change button state
         self.togglePrevNextBtn(self._currScanIdx)
+        
+        layoutManager = slicer.app.layoutManager()
+        for sliceViewName in layoutManager.sliceViewNames():
+            layoutManager.sliceWidget(sliceViewName).mrmlSliceNode().RotateToVolumePlane(self._currVolumeNode)
+        slicer.util.resetSliceViews()
+
 
         self.closePb()
         self._turninig = False
