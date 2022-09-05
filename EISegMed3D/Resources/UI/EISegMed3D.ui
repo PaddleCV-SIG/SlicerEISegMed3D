@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
-    <class>placePoint</class>
-    <widget class="qMRMLWidget" name="placePoint">
+    <class>EISegMed3D</class>
+    <widget class="qMRMLWidget" name="EISegMed3D">
         <property name="enabled">
             <bool>true</bool>
         </property>

@@ -68,34 +68,25 @@ colors = [
 
 
 class EISegMed3D(ScriptedLoadableModule):
-    """Uses ScriptedLoadableModule base class, available at:
-    https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
-    """
-
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = "EISegMed3D"  # TODO: make this more human readable by adding spaces
         self.parent.categories = [
-            "Interactive Segmentation"
+            "Segmentation"
         ]  # TODO: set categories (folders where the module shows up in the module selector)
         self.parent.dependencies = []  # TODO: add here list of module names that this module requires
-        self.parent.contributors = ["Lin Han, Daisy (Baidu Corp.)"]
+        self.parent.contributors = ["Lin Han(NYU Tandon School of Engineering), Daisy (Baidu Corp.)"]
         # TODO: update with short description of the module and a link to online module documentation
         self.parent.helpText = """
-This is an example of scripted loadable module bundled in an extension.
-See more information in <a href="https://github.com/organization/projectname#EISegMed3D">module documentation</a>.
+An extension to perform efficient interactive segmentation enabled by deep learning. Download model and parameter from the <a href="https://github.com/PaddlePaddle/PaddleSeg">plugin website</a>, specify the model and parameter paths, click load model, select a data folder and add positive or negative points to get segmentation results.
 """
         # TODO: replace with organization, grant and thanks
         self.parent.acknowledgementText = """
-This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc., Andras Lasso, PerkLab,
-and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
 """
-
         # Additional initialization step after application startup is complete
         slicer.app.connect("startupCompleted()", self.initializeAfterStartup)
 
     def initializeAfterStartup(self):
-        # print("initializeAfterStartup", slicer.app.commandOptions().noMainWindow)
         pass
 
 
@@ -146,33 +137,33 @@ def registerSampleData():
     # EISegMed3D1
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
         # Category and sample name displayed in Sample Data module
-        category="placePoint",
-        sampleName="placePoint1",
+        category="EISegMed3D",
+        sampleName="EISegMed3D",
         # Thumbnail should have size of approximately 260x280 pixels and stored in Resources/Icons folder.
         # It can be created by Screen Capture module, "Capture all views" option enabled, "Number of images" set to "Single".
-        thumbnailFileName=os.path.join(iconsPath, "placePoint1.png"),
+        thumbnailFileName=os.path.join(iconsPath, "EISegMed3D.png"),
         # Download URL and target file name
         uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
-        fileNames="placePoint1.nrrd",
+        fileNames="EISegMed3D.nrrd",
         # Checksum to ensure file integrity. Can be computed by this command:
         #  import hashlib; print(hashlib.sha256(open(filename, "rb").read()).hexdigest())
         checksums="SHA256:998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
         # This node name will be used when the data set is loaded
-        nodeNames="placePoint1",
+        nodeNames="EISegMed3D",
     )
 
     # EISegMed3D2
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
         # Category and sample name displayed in Sample Data module
-        category="placePoint",
-        sampleName="placePoint2",
-        thumbnailFileName=os.path.join(iconsPath, "placePoint2.png"),
+        category="EISegMed3D",
+        sampleName="EISegMed3D",
+        thumbnailFileName=os.path.join(iconsPath, "EISegMed3D.png"),
         # Download URL and target file name
         uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
-        fileNames="placePoint2.nrrd",
+        fileNames="EISegMed3D.nrrd",
         checksums="SHA256:1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
         # This node name will be used when the data set is loaded
-        nodeNames="placePoint2",
+        nodeNames="EISegMed3D",
     )
 
 
@@ -617,12 +608,11 @@ class EISegMed3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # 6. change button state
         self.togglePrevNextBtn(self._currScanIdx)
-        
+
         layoutManager = slicer.app.layoutManager()
         for sliceViewName in layoutManager.sliceViewNames():
             layoutManager.sliceWidget(sliceViewName).mrmlSliceNode().RotateToVolumePlane(self._currVolumeNode)
         slicer.util.resetSliceViews()
-
 
         self.closePb()
         self._turninig = False
