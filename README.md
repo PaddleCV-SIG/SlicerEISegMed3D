@@ -1,5 +1,7 @@
 # SlicerEISegMed3D
 
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 A 3D slicer extension for performing **E**fficient **I**nteractive **Seg**mentation on **Med**ical image in **3D**. Users will guide a deep learning model to perform segmentation by providing positive and negative points.
 
 ## Install
