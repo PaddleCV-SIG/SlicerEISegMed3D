@@ -1,5 +1,9 @@
 import os
 import sys
+import logging
+
+logging.getLogger().setLevel(logging.ERROR)
+
 import numpy as np
 from copy import deepcopy
 
@@ -87,7 +91,7 @@ class BasePredictor(object):
         self.predictor = create_predictor(self.pred_cfg)
 
     def _init_gpu_config(self):
-        logging("Use NVIDIA GPU")
+        logging.info("Use NVIDIA GPU")
         self.pred_cfg.enable_use_gpu(100, 0)
 
     def _init_cpu_config(self):
