@@ -4,7 +4,7 @@
 
 ## Install
 
-EIMedSeg3D depends on pypi packages paddlepaddle and paddleseg. You would need to install them before using this plugin.
+EISegMed3D depends on pypi packages paddlepaddle and paddleseg. You would need to install them before using this plugin.
 
 Open up the python terminal inside 3D Slicer and run the following code.
 
