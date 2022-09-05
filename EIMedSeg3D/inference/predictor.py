@@ -87,16 +87,16 @@ class BasePredictor(object):
         self.predictor = create_predictor(self.pred_cfg)
 
     def _init_gpu_config(self):
-        print("Use NVIDIA GPU")
+        logging("Use NVIDIA GPU")
         self.pred_cfg.enable_use_gpu(100, 0)
 
     def _init_cpu_config(self):
-        print("Use x86 CPU")
+        logging.info("Use x86 CPU")
         self.pred_cfg.disable_gpu()
         if self.enable_mkldnn:
-            print("Use MKLDNN")
+            logging.info("Use MKLDNN")
             # cache 10 different shapes for mkldnn
-            self.pred_cfg.set_mkldnn_cache_capacity(10)  # cannot use on MAC
+            # self.pred_cfg.set_mkldnn_cache_capacity(10)  # cannot use on MAC
             self.pred_cfg.enable_mkldnn()
         self.pred_cfg.set_cpu_math_library_num_threads(10)
 
@@ -193,7 +193,7 @@ class BasePredictor(object):
         image = image.numpy().astype("float32")
         coord_features = coord_features.numpy().astype("float32")
 
-        # print("coord_features.shape, image.shape", coord_features.shape, image.shape, prev_mask.shape)
+        # logging.info("coord_features.shape, image.shape", coord_features.shape, image.shape, prev_mask.shape)
         self.input_handle_1.copy_from_cpu(image)
         self.input_handle_2.copy_from_cpu(coord_features)
 
@@ -223,7 +223,7 @@ class BasePredictor(object):
 
     def get_points_nd(self, clicks_lists):
         total_clicks = []
-        print(
+        logging.info(
             "check_list",
             clicks_lists,
         )

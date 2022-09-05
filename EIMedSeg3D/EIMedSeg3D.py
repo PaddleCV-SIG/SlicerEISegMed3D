@@ -20,6 +20,8 @@ from slicer.util import VTKObservationMixin
 # when test, wont use any paddle related funcion
 TEST = True
 if not TEST:
+    logging.getLogger().setLevel(logging.ERROR)
+if not TEST:
     try:
         import paddle
     except ModuleNotFoundError as e:
@@ -291,7 +293,10 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.image_ww = (0, 2650)  # low, high range for image crop
         self.test_iou = False  # the label file need to be set correctly
         self.file_suffix = [".nii", ".nii.gz"]  # files with these suffix will be loaded
-        self.device, self.enable_mkldnn = "cpu", True
+        if TEST:
+            self.device, self.enable_mkldnn = "cpu", True
+        else:
+            self.device, self.enable_mkldnn = "gpu", True
 
     def clearScene(self, clearAllVolumes=False):
         # TODO: remove old volume
@@ -465,7 +470,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     while True:
                         if scanPath not in self._loadingScans:
                             return slicer.util.getNode(osp.basename(scanPath))
-                    print("waiting", scanPath, timeout)
+                    logging.info("waiting", scanPath, timeout)
                     time.sleep(0.1)
                     timeout -= 1
                     if timeout == 0:
@@ -474,7 +479,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     return None
             else:
                 if wait:
-                    print(f"loading {scanPath}")
+                    logging.info(f"loading {scanPath}")
                     self._loadingScans.add(scanPath)
                     node = slicer.util.loadVolume(scanPath, properties={"show": False, "singleFile": True})
                     node.SetName(osp.basename(scanPath))
@@ -778,7 +783,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.progressDetail.setText(f"Finished: {len(self._finishedPaths)} / Total: {len(self._scanPaths)}")
 
         def toggleFinished(idx, *args):
-            print(idx, *args)
+            logging.info(idx, *args)
             if self._scanPaths[idx] in self._finishedPaths:
                 self._finishedPaths.remove(self._scanPaths[idx])
             else:
@@ -962,7 +967,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         posPoints = self.getControlPointsXYZ(self.dgPositivePointListNode, "positive")
         negPoints = self.getControlPointsXYZ(self.dgNegativePointListNode, "negative")
         newPointIndex = observer.GetDisplayNode().GetActiveControlPoint()
-        print("newPointIndex", newPointIndex)
+        logging.info("newPointIndex", newPointIndex)
         newPointPos = self.getControlPointXYZ(observer, newPointIndex)
         isPositivePoint = False if len(posPoints) == 0 else newPointPos == posPoints[-1]
         logging.info(f"{['Negative', 'Positive'][int(isPositivePoint)]} point added at {newPointPos}")
@@ -1000,7 +1005,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 label = sitk.ReadImage(self._currLabelPath)
                 label = sitk.GetArrayFromImage(label).astype("int32")
                 iou = self.get_iou(label, mask, newPointPos)
-                print("Current IOU is {}".format(iou))
+                logging.info("Current IOU is {}".format(iou))
         self.closePb()
         self._addingControlPoint = False
 
@@ -1031,7 +1036,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.input_data = input_data
 
     def setImage(self):
-        print(f"输入网络前数据的形状:{self.input_data.shape}")  # shape (1, 512, 512, 12)
+        logging.info(f"输入网络前数据的形状:{self.input_data.shape}")  # shape (1, 512, 512, 12)
         try:
             self.inference_predictor.set_input_image(self.input_data)
         except AttributeError:
@@ -1072,7 +1077,9 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         npy_img = sitk.GetArrayFromImage(Mask).astype("float32")  # 12, 512, 512 DHW
 
-        print(f"预测结果的形状：{output_data.shape}, 预测时间为 {(time.time() - tic) * 1000} ms")  # shape (12, 512, 512) DHW test
+        logging.info(
+            f"预测结果的形状：{output_data.shape}, 预测时间为 {(time.time() - tic) * 1000} ms"
+        )  # shape (12, 512, 512) DHW test
 
         return npy_img
 
@@ -1086,7 +1093,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         else:
             click_position_new.append(-100)
 
-        print(
+        logging.info(
             "The {} click is click on {} (resampled)".format(
                 ["negative", "positive"][positive_click], click_position_new
             )
@@ -1094,7 +1101,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         click = inference.Click(is_positive=positive_click, coords=click_position_new)
         self.clicker.add_click(click)
-        print("####################### clicker length", len(self.clicker.clicks_list))
+        logging.info("####################### clicker length", len(self.clicker.clicks_list))
 
     """ saving related """
 
@@ -1122,7 +1129,7 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         catgs = self.getCatgFromFile()
         segmentationNode = self.segmentationNode
-        print("segmentationNode", segmentationNode)
+        logging.info("segmentationNode", segmentationNode)
         segmentation = segmentationNode.GetSegmentation()
 
         # 2. prepare save path
