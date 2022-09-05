@@ -544,10 +544,13 @@ class EIMedSeg3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # 1. load new scan & preprocess
         image_path = self._scanPaths[turnToIdx]
         self.setPb(0.2, f"Loading {osp.basename(image_path)}")
-        # self._currVolumeNode = slicer.util.loadVolume(image_path)
         self._currVolumeNode = self.getScan(image_path)
         self._currVolumeNode.SetName(osp.basename(image_path))
         self.manageCache(turnToIdx, skipPreload=skipPreload)
+
+        layoutManager = slicer.app.layoutManager()
+        for sliceViewName in layoutManager.sliceViewNames():
+            layoutManager.sliceWidget(sliceViewName).mrmlSliceNode().RotateToVolumePlane(self._currVolumeNode)
 
         # 2. load segmentation or create an empty one
         self.setPb(0.8, "Loading segmentation")
