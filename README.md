@@ -5,7 +5,7 @@
   <img src="https://user-images.githubusercontent.com/34859558/188449455-cd4e4099-6e70-44ca-b8de-57bab04c187c.png" align="middle" width = 500" />
 </p>
 
-**专注用户友好、高效、智能的3D医疗图像标注插件**  <img src="https://user-images.githubusercontent.com/34859558/188409382-467c4c45-df5f-4390-ac40-fa24149d4e16.png" width="30"/>
+**专注用户友好、高效、智能的3D医疗图像标注平台**  <img src="https://user-images.githubusercontent.com/34859558/188409382-467c4c45-df5f-4390-ac40-fa24149d4e16.png" width="30"/>
 
 [![License](https://img.shields.io/badge/license-Apache%202-blue.svg)](LICENSE)
 ![python version](https://img.shields.io/badge/python-3.6+-orange.svg)
@@ -20,7 +20,7 @@ EISeg-Med3D 是一个用于智能医学图像分割的 3D Slicer 插件，通过
 <div align="center">
 
 <p align="center">
-  <img src="https://user-images.githubusercontent.com/34859558/188415269-10526530-0415-4632-8223-0e5d755db29c.gif" title=" dds " align="middle" width = 500"/>
+  <img src="https://user-images.githubusercontent.com/34859558/188415269-10526530-0415-4632-8223-0e5d755db29c.gif"  align="middle" width = 900"/>
 </p>
 
 </div>
@@ -29,14 +29,14 @@ EISeg-Med3D 是一个用于智能医学图像分割的 3D Slicer 插件，通过
 ## <img src="https://user-images.githubusercontent.com/34859558/188419267-bd117697-7456-4c72-8cbe-1272264d4fe4.png" width="30"/> 特性
 * **高效**：每个类别只需数次点击直接生成3d分割结果，从此告别费时费力的手工标注。
 
-* **准确**：点击 3 点 mIOU 即可达到85%，配合搭载机器学习算法和手动标注的标注编辑器，精度 100% 不是梦。
+* **准确**：点击 3 点 mIOU 即可达到85% ，配合搭载机器学习算法和手动标注的标注编辑器，精度 100% 不是梦。
 
 * **便捷**：四步轻松安装；标注结果、进度自动保存；标注结果透明度调整提升标注准确度；用户友好的界面交互，让你标注省心不麻烦。
 
 *************
 
 ##  <img src="https://user-images.githubusercontent.com/34859558/188439970-18e51958-61bf-4b43-a73c-a9de3eb4fc79.png" width="30"/> 使用指南
-Slicer的使用整体流程如下图所示，我们将按照环境安装和使用步骤两部分说明，其中使用步骤也可以参见简介中的视频。
+Slicer的使用整体流程如下图所示，我们将按照环境安装、模型下载和使用步骤三部分说明，其中使用步骤也可以参见简介中的视频。
 
 
 <p align="center">
@@ -81,27 +81,38 @@ sys.executable # 'D:/slicer/Slicer 5.0.3/bin/PythonSlicer.exe'
 
 <!-- <details>
 <summary><b>使用步骤</b></summary> -->
+### 模型、数据下载
+目前我们提供在下列模型和数据上的试用体验：
+<p align="center">
+
+| 数据 | 模型 | 下载链接 |
+|:-:|:-:|:-:|
+| MRI椎骨数据 | 交互式 Vnet |[pdiparams](https://pan.baidu.com/s/1Dk-PqogeJOiaEGBse3kFOA)-pw: 6ok7 \| [pdmodel](https://pan.baidu.com/s/1daFrC1C2cwCmovvLj5n3QA)-pw: sg80 \| [椎骨数据](https://aistudio.baidu.com/aistudio/datasetdetail/81211)|
+
+</p>
 
 ### 使用步骤
 #### 1. 加载模型
 * 在```Model Settings```中加载保存在本地的模型，点击```Model Path```路径选择框后面的```...```的按钮，选择后缀名为```.pdodel```的本地文件，点击```Param Path```路径选择框后面的```...```的按钮，选择后缀名为```.pdiparams```的本地文件。
 * 点击```Load Static Model```按钮，此时会有弹窗提示```Sucessfully loaded model to gpu!```，表示模型已经加载进来。
 <p align="center">
-<img src="https://user-images.githubusercontent.com/48357642/187881886-e4d99fb4-c697-48a5-8cd7-a5ab83c7791d.PNG" width="90.6%" height="20%">
+<img src="https://user-images.githubusercontent.com/48357642/187881886-e4d99fb4-c697-48a5-8cd7-a5ab83c7791d.PNG" width="70.6%" height="20%">
 </p>
 
 #### 2. 加载图像
 * 点击```Data Folder```后面的按钮，选择待标注的医学图像文件所在路径后，会自动把该路径下的所有图像全部加载，此时可以在```Progress```中查看加载进来的所有图像以及当前已标注完成的图像。
 
 <p align="center">
-<img src="https://user-images.githubusercontent.com/48357642/187882370-6f9a8f21-8a96-4a4c-8451-18d6e608f7e4.PNG" width="90.6%" height="20%">
+<img src="https://user-images.githubusercontent.com/48357642/187882370-6f9a8f21-8a96-4a4c-8451-18d6e608f7e4.PNG" width="70.6%" height="20%">
 </p>
 
 #### 3. 开始标注
 * 在```Segment Editor```中点击```Add/Remove```按钮便可自行添加标签或是删除标签，添加标签时会有默认命名，也可以双击标签自行给标签命名。
 * 添加标签完毕后即可选中某个标签，点击```Positive Point```或是```Negative Point```后的按钮即可给图像加点，开始交互式标注。
 * 点击```Finish Segment```按钮，即可结束当前所选标签下的标注，此时可点击左侧的橡皮擦等工具对标注结果进行精修。或者可重复以上步骤进行下一个对象的标注，否则可点击```Finish Scan```按钮，便会切换下一张图像。
-![开始标注界面](https://user-images.githubusercontent.com/48357642/187882400-8ee24469-6cb7-4c6a-acf8-df0e14e3f2a7.PNG)
+<p align="center">
+<img src="https://user-images.githubusercontent.com/48357642/187882400-8ee24469-6cb7-4c6a-acf8-df0e14e3f2a7.PNG" width="70.6%" height="20%">
+</p>
 
 * 关于精细修改标注工具的使用，详细可见[Slicer Segment editor](https://slicer.readthedocs.io/en/latest/user_guide/modules/segmenteditor.html)
 
@@ -109,14 +120,14 @@ sys.executable # 'D:/slicer/Slicer 5.0.3/bin/PythonSlicer.exe'
 * 点击```Pre Scan```按钮可以切换上一张图像到当前视图框内。
 * 点击```Next Scan```按钮可以切换下一张图像到当前视图框内。
 <p align="center">
-<img src="https://user-images.githubusercontent.com/48357642/187882440-e1c3cc03-b79e-4ad8-9987-20af42c9ae01.PNG" width="90.6%" height="20%">
+<img src="https://user-images.githubusercontent.com/48357642/187882440-e1c3cc03-b79e-4ad8-9987-20af42c9ae01.PNG" width="70.6%" height="20%">
 </p>
 
 #### 5. 查看标注进程
 * 在```Progress```中的```Annotation Progress```后面的进度条中可以查看当前加载进来的图像标注进程。
 * 双击```Annotation Progress```下方表格中某一张图像文件名，便可以自动跳转到所选图像。
 <p align="center">
-<img src="https://user-images.githubusercontent.com/48357642/187882460-0eb0fc86-d9d7-4733-b812-85c62b1b9281.PNG" width="90.6%" height="20%">
+<img src="https://user-images.githubusercontent.com/48357642/187882460-0eb0fc86-d9d7-4733-b812-85c62b1b9281.PNG" width="70.6%" height="20%">
 </p>
 <!-- </details> -->
 
