@@ -1,6 +1,7 @@
 import logging
 import os
 import os.path as osp
+import pathlib
 import time
 import json
 from functools import partial
@@ -18,7 +19,7 @@ from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
 # when test, wont use any paddle related funcion
-TEST = True
+TEST = osp.exists(pathlib.Path(__file__).parent.absolute() / "TEST")
 if not TEST:
     try:
         import paddle
