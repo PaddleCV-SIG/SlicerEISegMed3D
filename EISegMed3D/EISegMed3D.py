@@ -787,7 +787,6 @@ class EISegMed3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.progressDetail.setText(f"Finished: {len(self._finishedPaths)} / Total: {len(self._scanPaths)}")
 
         def toggleFinished(idx, *args):
-            logging.info(idx, *args)
             if self._scanPaths[idx] in self._finishedPaths:
                 self._finishedPaths.remove(self._scanPaths[idx])
             else:
@@ -1108,17 +1107,23 @@ class EISegMed3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     """ saving related """
 
-    def finishScan(self):
+    def finishScan(self, direction=None):
         if self._usingInteractive:
             self.exitInteractiveMode()
         self.saveSegmentation()
         self._finishedPaths.append(self._scanPaths[self._currScanIdx])
         self.saveProgress()
         self.updateProgressWidgets()
-        if self._lastTurnNextScan:
-            self.nextScan()
+        if direction is None:
+            if self._lastTurnNextScan:
+                self.nextScan()
+            else:
+                self.prevScan()
         else:
-            self.prevScan()
+            if direction == "next":
+                self.nextScan()
+            else:
+                self.prevScan()
 
     def saveSegmentation(self):
         """
@@ -1219,6 +1224,18 @@ class EISegMed3DWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         Called each time the user opens this module. Not when reload/switch back.
         """
+        shortcuts = {
+            "Ctrl+n": lambda: self.nextScan(),
+            "Ctrl+P": lambda: self.prevScan(),
+            "Ctrl+Shift+N": lambda: self.finishScan(direction="next"),
+            "Ctrl+Shift+P": lambda: self.finishScan(direction="prev"),
+        }
+
+        for key, func in shortcuts.items():
+            shortcut = qt.QShortcut(qt.QKeySequence(key), slicer.util.mainWindow())
+            print(key, func)
+            shortcut.connect("activated()", func)
+
         # if TEST:
         #     self.clearScene(clearAllVolumes=True)
 
